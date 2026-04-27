@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, FolderOpen, Folder, FileVideo, Copy, Trash2, Plus, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { adminListFolders, adminCreateFolder, adminDeleteFolder, adminListAnimes } from "@/api/admin";
+import { getApiError } from "@/api/axios";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -123,8 +124,8 @@ export default function AdminFolders() {
       toast.success("Dossier supprimé");
       qc.invalidateQueries({ queryKey: ["admin-folders"] });
     },
-    onError: (err: Error & { response?: { data?: { detail?: string } } }) => {
-      toast.error(err.response?.data?.detail ?? "Erreur lors de la suppression");
+    onError: (err: unknown) => {
+      toast.error(getApiError(err, "Erreur lors de la suppression"));
     },
   });
 
@@ -135,7 +136,7 @@ export default function AdminFolders() {
       qc.invalidateQueries({ queryKey: ["admin-folders"] });
       setPendingParent(null);
     },
-    onError: () => toast.error("Erreur lors de la création"),
+    onError: (err: unknown) => toast.error(getApiError(err, "Erreur lors de la création")),
   });
 
   const handleDelete = (id: number) => {

@@ -4,6 +4,7 @@ import { Search, Trash2, Loader2, MessageSquare } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { adminListComments, adminDeleteComment } from "@/api/admin";
+import { getApiError } from "@/api/axios";
 import { toast } from "sonner";
 
 export default function AdminComments() {
@@ -23,7 +24,7 @@ export default function AdminComments() {
       qc.invalidateQueries({ queryKey: ["admin-comments"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
     },
-    onError: () => toast.error("Erreur"),
+    onError: (err: unknown) => toast.error(getApiError(err, "Erreur")),
   });
 
   const comments = data?.items ?? [];

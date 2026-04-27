@@ -4,6 +4,7 @@ import { Search, Shield, ShieldCheck, Trash2, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { adminListUsers, adminSetRole, adminDeleteUser } from "@/api/admin";
+import { getApiError } from "@/api/axios";
 import { toast } from "sonner";
 
 export default function AdminUsers() {
@@ -23,7 +24,7 @@ export default function AdminUsers() {
       toast.success("Rôle mis à jour");
       qc.invalidateQueries({ queryKey: ["admin-users"] });
     },
-    onError: () => toast.error("Erreur"),
+    onError: (err: unknown) => toast.error(getApiError(err, "Erreur")),
   });
 
   const deleteMutation = useMutation({
@@ -33,7 +34,7 @@ export default function AdminUsers() {
       qc.invalidateQueries({ queryKey: ["admin-users"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
     },
-    onError: () => toast.error("Erreur"),
+    onError: (err: unknown) => toast.error(getApiError(err, "Erreur")),
   });
 
   const users = data?.items ?? [];

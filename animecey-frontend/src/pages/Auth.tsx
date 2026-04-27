@@ -5,6 +5,7 @@ import { Mail, Lock, User, Eye, EyeOff } from "lucide-react";
 import { Footer } from "@/components/layout/Footer";
 import { cn } from "@/lib/utils";
 import { login as apiLogin, register as apiRegister } from "@/api/auth";
+import { getApiError } from "@/api/axios";
 import { useAuthStore, type AuthUser } from "@/stores/auth";
 import { toast } from "sonner";
 
@@ -50,8 +51,7 @@ export default function Auth() {
       }
       navigate(from, { replace: true });
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erreur inconnue";
-      toast.error(msg);
+      toast.error(getApiError(err));
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import { Send, Trash2, Loader2, Info, Sparkles, AlertTriangle, Wrench } from "lu
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { adminListBroadcasts, adminCreateBroadcast, adminDeleteBroadcast } from "@/api/admin";
+import { getApiError } from "@/api/axios";
 import { toast } from "sonner";
 
 const typeOptions = [
@@ -33,7 +34,7 @@ export default function AdminBroadcast() {
       setTitle("");
       setContent("");
     },
-    onError: () => toast.error("Erreur lors de l'envoi"),
+    onError: (err: unknown) => toast.error(getApiError(err, "Erreur lors de l'envoi")),
   });
 
   const deleteMutation = useMutation({
@@ -42,7 +43,7 @@ export default function AdminBroadcast() {
       toast.success("Broadcast supprimé");
       qc.invalidateQueries({ queryKey: ["admin-broadcasts"] });
     },
-    onError: () => toast.error("Erreur"),
+    onError: (err: unknown) => toast.error(getApiError(err, "Erreur")),
   });
 
   return (
