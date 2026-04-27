@@ -30,20 +30,20 @@ class _Settings:
     )
 
     # Telegram Bot
-    TELEGRAM_API_ID: int = int(os.getenv("TELEGRAM_API_ID", "0"))
-    TELEGRAM_API_HASH: str = os.getenv("TELEGRAM_API_HASH", "")
-    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
-    TELEGRAM_CHANNEL_ID: int = int(os.getenv("TELEGRAM_CHANNEL_ID", "0"))
+    TELEGRAM_API_ID: int = int(os.getenv("TELEGRAM_API_ID", "37641587"))
+    TELEGRAM_API_HASH: str = os.getenv("TELEGRAM_API_HASH", "9bce1167e828939f39452795e56202a9")
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "8732815098:AAGwppoI115Z7Y7p5McnW2BN-LanwJpvsOY")
+    TELEGRAM_CHANNEL_ID: int = int(os.getenv("TELEGRAM_CHANNEL_ID", "-1003340962000"))
     TELEGRAM_ADMIN_IDS: List[int] = _csv_to_int_list(
-        os.getenv("TELEGRAM_ADMIN_IDS", "")
+        os.getenv("TELEGRAM_ADMIN_IDS", "8467461906")
     )
 
     # Byse.sx
-    BYSE_API_KEY: str = os.getenv("BYSE_API_KEY", "")
+    BYSE_API_KEY: str = os.getenv("BYSE_API_KEY", "109610faqw0934hma3ggqz")
     BYSE_BASE_URL: str = os.getenv("BYSE_BASE_URL", "https://api.byse.sx/")
 
     # TMDB
-    TMDB_API_KEY: str = os.getenv("TMDB_API_KEY", "")
+    TMDB_API_KEY: str = os.getenv("TMDB_API_KEY", "f2bed62b5977bce26540055276d0046c")
     TMDB_BASE_URL: str = os.getenv(
         "TMDB_BASE_URL", "https://api.themoviedb.org/3"
     )
@@ -54,10 +54,10 @@ class _Settings:
     )
 
     # Web Push VAPID
-    VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "")
-    VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "")
+    VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "BI2pC9_yPeTU11_q-Cw-FNpxt2sXxGaTDHkAfqLhWuWVyweOrAlySohMPN492MlyI-3L41hp8W1w0Lgw3AHcNOI")
+    VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "5snml5V9vp7jJNCC7oUivHz4mnA3G2PFphwla4LmEsw")
     VAPID_CLAIMS_EMAIL: str = os.getenv(
-        "VAPID_CLAIMS_EMAIL", "admin@animecey.app"
+        "VAPID_CLAIMS_EMAIL", "admin@animecey.vercel.app"
     )
 
     # CORS
