@@ -84,7 +84,7 @@ export default function AdminAnimes() {
               id: r.id as number,
               title: title?.english ?? title?.romaji ?? "",
               title_jp: title?.native,
-              poster_url: (r.coverImage as Record<string, string>)?.large,
+              poster_url: (r.coverImage as Record<string, string>)?.extraLarge ?? (r.coverImage as Record<string, string>)?.large,
               banner_url: r.bannerImage as string,
               year: (r.seasonYear ?? (r.startDate && (r.startDate as Record<string, number>).year)) as number,
               type: r.format === "MOVIE" ? "film" : "serie",
@@ -96,8 +96,13 @@ export default function AdminAnimes() {
           }),
         );
       }
-    } catch {
-      toast.error("Erreur lors de la recherche");
+    } catch (err: unknown) {
+      const axErr = err as { response?: { status?: number; data?: { detail?: string } } };
+      if (axErr.response?.status === 401 || axErr.response?.status === 403) {
+        toast.error("Accès refusé — connecte-toi en tant qu'admin");
+      } else {
+        toast.error(axErr.response?.data?.detail ?? "Erreur lors de la recherche");
+      }
     }
     setSearching(false);
   };
