@@ -22,7 +22,7 @@ class PaginatedResponse(BaseModel):
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=2, max_length=50)
     email: str = Field(..., max_length=255)
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=4)
 
 
 class LoginRequest(BaseModel):
@@ -44,7 +44,7 @@ class UpdateProfileRequest(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     old_password: str
-    new_password: str = Field(..., min_length=6)
+    new_password: str = Field(..., min_length=4)
 
 
 # ── Users ──────────────────────────────────────────────────────────────

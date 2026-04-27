@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, User, Eye, EyeOff } from "lucide-react";
@@ -10,6 +10,21 @@ import { useAuthStore, type AuthUser } from "@/stores/auth";
 import { toast } from "sonner";
 
 type Mode = "login" | "register";
+
+function getPasswordStrength(pw: string): { score: number; label: string; color: string } {
+  if (!pw) return { score: 0, label: "", color: "" };
+  let s = 0;
+  if (pw.length >= 4) s++;
+  if (pw.length >= 8) s++;
+  if (/[A-Z]/.test(pw)) s++;
+  if (/[0-9]/.test(pw)) s++;
+  if (/[^A-Za-z0-9]/.test(pw)) s++;
+  if (s <= 1) return { score: 1, label: "Faible", color: "bg-red-500" };
+  if (s <= 2) return { score: 2, label: "Insuffisant", color: "bg-orange-500" };
+  if (s <= 3) return { score: 3, label: "Moyen", color: "bg-yellow-500" };
+  if (s === 4) return { score: 4, label: "Bon", color: "bg-emerald-400" };
+  return { score: 5, label: "Excellent", color: "bg-emerald-500" };
+}
 
 export default function Auth() {
   const navigate = useNavigate();
@@ -24,6 +39,7 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
+  const strength = useMemo(() => getPasswordStrength(password), [password]);
 
   if (isAuthenticated) {
     return <Navigate to={from} replace />;
@@ -33,6 +49,10 @@ export default function Auth() {
     e.preventDefault();
     if (loading) return;
 
+    if (mode === "register" && password.length < 4) {
+      toast.error("Le mot de passe doit contenir au moins 4 caractères");
+      return;
+    }
     if (mode === "register" && password !== password2) {
       toast.error("Les mots de passe ne correspondent pas");
       return;
@@ -176,6 +196,29 @@ export default function Auth() {
                   {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </Field>
+
+              {mode === "register" && password.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          "h-1 flex-1 rounded-full transition-colors",
+                          i <= strength.score ? strength.color : "bg-border",
+                        )}
+                      />
+                    ))}
+                  </div>
+                  <p className={cn(
+                    "text-[11px] font-body font-semibold",
+                    strength.score <= 1 ? "text-red-500" : strength.score <= 2 ? "text-orange-500" : strength.score <= 3 ? "text-yellow-500" : "text-emerald-500",
+                  )}>
+                    {strength.label}
+                    {strength.score <= 2 && " — ajoute des majuscules, chiffres ou symboles"}
+                  </p>
+                </div>
+              )}
 
               {mode === "register" && (
                 <Field icon={<Lock className="w-4 h-4" />} label="Confirmer le mot de passe">
