@@ -1,0 +1,7 @@
+animecey.db
+__pycache__/
+*.pyc
+.env
+venv/
+*.session
+*.session-journal
