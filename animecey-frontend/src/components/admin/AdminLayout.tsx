@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Navigate, Outlet, useLocation } from "react-router-dom";
 import { useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { Avatar } from "@/components/comments/Avatar";
+import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -24,7 +25,7 @@ const links = [
   { to: "/admin/comments", label: "Commentaires", icon: MessageSquare },
 ];
 
-function SidebarContent() {
+function SidebarContent({ username, email, onLogout }: { username: string; email: string; onLogout: () => void }) {
   return (
     <>
       <div className="px-5 py-5">
@@ -60,14 +61,14 @@ function SidebarContent() {
       </nav>
       <div className="mt-auto px-3 pb-4">
         <div className="flex items-center gap-3 p-3 rounded-lg bg-surface border border-border">
-          <Avatar name="Admin" size={32} />
+          <Avatar name={username} size={32} />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-body font-semibold truncate">Admin</p>
-            <p className="text-xs text-muted-foreground font-body truncate">admin@animecey</p>
+            <p className="text-sm font-body font-semibold truncate">{username}</p>
+            <p className="text-xs text-muted-foreground font-body truncate">{email}</p>
           </div>
-          <Link to="/" aria-label="Déconnexion" className="text-muted-foreground hover:text-foreground">
+          <button onClick={onLogout} aria-label="Déconnexion" className="text-muted-foreground hover:text-foreground">
             <LogOut className="w-4 h-4" />
-          </Link>
+          </button>
         </div>
       </div>
     </>
@@ -75,13 +76,26 @@ function SidebarContent() {
 }
 
 export function AdminLayout({ children }: { children?: ReactNode }) {
+  const { user, isAuthenticated, isAdmin, logout } = useAuthStore();
   const [open, setOpen] = useState(false);
   const loc = useLocation();
+
+  if (!isAuthenticated || !user) {
+    return <Navigate to="/auth" state={{ from: loc.pathname }} replace />;
+  }
+  if (!isAdmin) {
+    return <Navigate to="/" replace />;
+  }
+
+  const handleLogout = () => {
+    logout();
+  };
+
   return (
     <div className="min-h-screen bg-background flex">
       {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-60 shrink-0 bg-[hsl(var(--background))] border-r border-border min-h-screen sticky top-0">
-        <SidebarContent />
+        <SidebarContent username={user.username} email={user.email} onLogout={handleLogout} />
       </aside>
 
       {/* Mobile drawer */}
@@ -102,7 +116,7 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
               onClick={(e) => e.stopPropagation()}
               className="w-60 h-full bg-background border-r border-border flex flex-col"
             >
-              <SidebarContent />
+              <SidebarContent username={user.username} email={user.email} onLogout={handleLogout} />
             </motion.aside>
           </motion.div>
         )}

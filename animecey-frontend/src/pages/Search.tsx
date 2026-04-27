@@ -1,38 +1,37 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Search as SearchIcon, X } from "lucide-react";
+import { Search as SearchIcon, X, Loader2 } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { AnimeGrid } from "@/components/anime/AnimeGrid";
-import { FilterPanel } from "@/components/catalog/FilterPanel";
-import { filterAnimes, type CatalogFilters } from "@/data/mock";
+import { fetchAnimes, type AnimeFilters } from "@/api/animes";
 
 export default function Search() {
   const [params, setParams] = useSearchParams();
   const initialQ = params.get("q") ?? "";
   const [input, setInput] = useState(initialQ);
   const [debounced, setDebounced] = useState(initialQ);
-  const [filters, setFilters] = useState<CatalogFilters>({});
 
-  // Debounce search
   useEffect(() => {
     const t = setTimeout(() => setDebounced(input), 300);
     return () => clearTimeout(t);
   }, [input]);
 
-  // Sync URL
   useEffect(() => {
     if (debounced) setParams({ q: debounced }, { replace: true });
     else setParams({}, { replace: true });
   }, [debounced, setParams]);
 
-  const results = useMemo(
-    () => filterAnimes({ ...filters, query: debounced }),
-    [filters, debounced],
-  );
+  const apiFilters: AnimeFilters = { q: debounced || undefined, limit: 24 };
+  const { data, isLoading } = useQuery({
+    queryKey: ["search-animes", debounced],
+    queryFn: () => fetchAnimes(apiFilters),
+    enabled: !!debounced,
+  });
 
-  const reset = () => setFilters({});
+  const results = data?.items ?? [];
 
   return (
     <motion.div
@@ -67,24 +66,35 @@ export default function Search() {
           )}
         </div>
 
-        <div className="mt-6">
-          <FilterPanel filters={filters} onChange={setFilters} onReset={reset} />
-        </div>
-
         <div className="mt-8">
           <p className="text-sm text-muted-foreground font-body mb-5">
-            {results.length} résultat{results.length > 1 ? "s" : ""}
-            {debounced && (
+            {isLoading && debounced ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Recherche...
+              </span>
+            ) : (
               <>
-                {" "}pour <span className="text-foreground font-semibold">"{debounced}"</span>
+                {data?.total ?? 0} résultat{(data?.total ?? 0) > 1 ? "s" : ""}
+                {debounced && (
+                  <>
+                    {" "}pour <span className="text-foreground font-semibold">"{debounced}"</span>
+                  </>
+                )}
               </>
             )}
           </p>
-          <AnimeGrid
-            animes={results}
-            emptyMessage={debounced ? `Aucun résultat pour "${debounced}"` : "Aucun résultat"}
-            emptyHint="Essaie un autre titre ou modifie les filtres."
-          />
+          {!debounced && (
+            <p className="text-center text-muted-foreground font-body py-12">
+              Tape un titre pour lancer la recherche.
+            </p>
+          )}
+          {debounced && !isLoading && (
+            <AnimeGrid
+              animes={results}
+              emptyMessage={debounced ? `Aucun résultat pour "${debounced}"` : "Aucun résultat"}
+              emptyHint="Essaie un autre titre ou modifie les filtres."
+            />
+          )}
         </div>
       </main>
       <Footer />

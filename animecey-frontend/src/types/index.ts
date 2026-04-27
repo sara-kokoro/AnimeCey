@@ -18,6 +18,16 @@ export interface Anime {
   episodes_count: number;
 }
 
+export interface CatalogFilters {
+  query?: string;
+  genres?: string[];
+  type?: "all" | "serie" | "film";
+  language?: "all" | "VF" | "VOSTFR" | "BOTH";
+  status?: "all" | "ongoing" | "completed" | "upcoming";
+  year?: number | "all";
+  sort?: "az" | "za" | "score" | "recent";
+}
+
 export interface Episode {
   id: number;
   anime_id: number;

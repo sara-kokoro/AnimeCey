@@ -1,7 +1,16 @@
 import { X } from "lucide-react";
-import { allGenres, allYears, type CatalogFilters } from "@/data/mock";
+import type { CatalogFilters } from "@/types";
 import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { cn } from "@/lib/utils";
+
+const ALL_GENRES = [
+  "Action", "Aventure", "Comédie", "Drame", "Fantasy", "Horreur",
+  "Mystère", "Romance", "Sci-Fi", "Shonen", "Seinen", "Slice of Life",
+  "Sports", "Surnaturel", "Thriller", "Mecha", "Isekai", "Musique",
+  "Psychologique", "Ecchi",
+];
+
+const ALL_YEARS = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018, 2017, 2016, 2015];
 
 interface Props {
   filters: CatalogFilters;
@@ -82,14 +91,14 @@ export function FilterPanel({ filters, onChange, onReset, layout = "horizontal" 
           onChange={(v) => set("year", v === "all" ? "all" : Number(v))}
           options={[
             { value: "all", label: "Toutes" },
-            ...allYears.map((y) => ({ value: y, label: String(y) })),
+            ...ALL_YEARS.map((y) => ({ value: y, label: String(y) })),
           ]}
         />
       </FilterBlock>
 
       <FilterBlock label="Genres">
         <div className="flex flex-wrap gap-2">
-          {allGenres.map((g) => {
+          {ALL_GENRES.map((g) => {
             const active = (filters.genres ?? []).includes(g);
             return (
               <button

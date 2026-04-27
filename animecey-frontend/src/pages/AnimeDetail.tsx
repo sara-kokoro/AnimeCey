@@ -1,32 +1,46 @@
 import { useParams, Navigate, Link } from "react-router-dom";
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Heart, Play, Star, AlertCircle, Film, ArrowUpDown, Youtube, X } from "lucide-react";
+import { Heart, Play, Star, ArrowUpDown, Youtube, X, Loader2 } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Badge2 } from "@/components/ui/Badge2";
 import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
-import { getAnimeById, getEpisodes } from "@/data/mock";
+import { fetchAnime } from "@/api/animes";
+import { fetchEpisodes } from "@/api/episodes";
 import type { Language } from "@/types";
 
 export default function AnimeDetail() {
   const { id } = useParams();
-  const anime = getAnimeById(Number(id));
+  const { data: anime, isLoading: loadingAnime } = useQuery({
+    queryKey: ["anime", Number(id)],
+    queryFn: () => fetchAnime(Number(id)),
+    enabled: !!id,
+  });
 
-  const [language, setLanguage] = useState<Language>(
-    anime?.languages_available[0] ?? "VOSTFR",
-  );
+  const [language, setLanguage] = useState<Language | null>(null);
   const [season, setSeason] = useState(1);
   const [reverse, setReverse] = useState(false);
-  const [blur, setBlur] = useState(false);
   const [favorite, setFavorite] = useState(false);
   const [trailerOpen, setTrailerOpen] = useState(false);
 
-  const episodes = useMemo(
-    () => (anime ? getEpisodes(anime.id, language, season) : []),
-    [anime, language, season],
-  );
+  const lang = language ?? anime?.languages_available?.[0] ?? "VOSTFR";
+
+  const { data: episodes = [], isLoading: loadingEps } = useQuery({
+    queryKey: ["episodes", Number(id), lang, season],
+    queryFn: () => fetchEpisodes(Number(id), lang, season),
+    enabled: !!anime,
+  });
+
+  if (loadingAnime) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   if (!anime) return <Navigate to="/" replace />;
 
@@ -48,7 +62,6 @@ export default function AnimeDetail() {
     >
       <Navbar />
 
-      {/* Hero */}
       <section className="relative pt-16">
         <div className="relative h-[260px] md:h-[420px] overflow-hidden">
           <img
@@ -114,32 +127,21 @@ export default function AnimeDetail() {
               </p>
 
               <div className="flex flex-wrap justify-center md:justify-start gap-3 mt-6">
+                {anime.trailer_url && (
+                  <button
+                    onClick={() => setTrailerOpen(true)}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-surface border border-border text-foreground font-body font-semibold hover:border-primary/40 transition-all"
+                  >
+                    <Youtube className="w-4 h-4" />
+                    Trailer
+                  </button>
+                )}
                 <button
-                  onClick={() => setTrailerOpen(true)}
+                  onClick={() => setFavorite(!favorite)}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-surface border border-border text-foreground font-body font-semibold hover:border-primary/40 transition-all"
                 >
-                  <Youtube className="w-4 h-4" />
-                  Bande annonce
-                </button>
-                <button
-                  aria-label="Ajouter aux favoris"
-                  onClick={() => setFavorite((v) => !v)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-surface border border-border font-body font-semibold transition-all hover:border-primary/40"
-                >
-                  <motion.span
-                    key={String(favorite)}
-                    initial={{ scale: 0.6 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                    className="inline-flex"
-                  >
-                    <Heart
-                      className={`w-4 h-4 ${favorite ? "fill-primary text-primary" : "text-foreground"}`}
-                    />
-                  </motion.span>
-                  <span className={favorite ? "text-primary" : "text-foreground"}>
-                    {favorite ? "Favori" : "Favori"}
-                  </span>
+                  <Heart className={`w-4 h-4 ${favorite ? "fill-primary text-primary" : ""}`} />
+                  {favorite ? "Retiré des favoris" : "Ajouter aux favoris"}
                 </button>
               </div>
             </div>
@@ -147,123 +149,84 @@ export default function AnimeDetail() {
         </div>
       </section>
 
-      {/* Selection */}
-      <section className="mx-auto max-w-7xl px-4 md:px-6 mt-10 space-y-6">
-        <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground font-body font-semibold mb-2">
-            Langue
-          </p>
-          <ToggleGroup2
-            options={anime.languages_available.map((l) => ({ value: l, label: l }))}
-            value={language}
-            onChange={(v) => setLanguage(v as Language)}
-            size="sm"
-          />
+      <main className="mx-auto max-w-7xl px-4 md:px-6 mt-8 pb-20">
+        <div className="flex flex-wrap items-center gap-4 mb-6">
+          {anime.languages_available.length > 0 && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold mb-1.5">
+                Langue
+              </p>
+              <ToggleGroup2
+                value={lang}
+                onChange={(v) => setLanguage(v as Language)}
+                options={anime.languages_available.map((l) => ({ value: l, label: l }))}
+              />
+            </div>
+          )}
+          {anime.type !== "film" && anime.seasons_count > 1 && (
+            <div>
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold mb-1.5">
+                Saison
+              </p>
+              <ToggleGroup2
+                value={season}
+                onChange={(v) => setSeason(Number(v))}
+                options={Array.from({ length: anime.seasons_count }).map((_, i) => ({
+                  value: i + 1,
+                  label: `${i + 1}`,
+                }))}
+              />
+            </div>
+          )}
+          <button
+            onClick={() => setReverse((r) => !r)}
+            className="ml-auto inline-flex items-center gap-1.5 text-xs font-body font-semibold text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowUpDown className="w-3.5 h-3.5" />
+            {reverse ? "Plus ancien" : "Plus récent"}
+          </button>
         </div>
 
-        {anime.type !== "film" && (
-          <div>
-            <p className="text-xs uppercase tracking-wider text-muted-foreground font-body font-semibold mb-2">
-              Saison
-            </p>
-            <ToggleGroup2
-              options={Array.from({ length: anime.seasons_count }).map((_, i) => ({
-                value: i + 1,
-                label: `Saison ${i + 1}`,
-              }))}
-              value={season}
-              onChange={(v) => setSeason(Number(v))}
-              size="sm"
-            />
-          </div>
-        )}
-      </section>
-
-      {/* Episodes */}
-      <section className="mx-auto max-w-7xl px-4 md:px-6 mt-10">
-        <div className="flex items-center justify-between mb-4 gap-3">
-          <h2 className="font-display font-bold text-lg md:text-xl">
-            Épisodes <span className="text-muted-foreground font-normal">({sorted.length})</span>
-          </h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setReverse((v) => !v)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface border border-border text-xs font-body font-semibold text-muted-foreground hover:text-foreground"
-              aria-label="Inverser l'ordre"
-            >
-              <ArrowUpDown className="w-3.5 h-3.5" />
-              Ordre
-            </button>
-            <button
-              onClick={() => setBlur((v) => !v)}
-              className="inline-flex items-center gap-2 text-xs font-body font-semibold text-muted-foreground"
-              aria-pressed={blur}
-            >
-              Flouter
-              <span
-                className={`relative w-10 h-5 rounded-full transition-colors ${blur ? "bg-primary" : "bg-surface-2"}`}
-              >
-                <span
-                  className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${blur ? "translate-x-5" : "translate-x-0.5"}`}
-                />
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {sorted.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Film className="w-10 h-10 text-muted-dim mb-3" />
-            <p className="text-muted-foreground font-body">
-              Aucun épisode disponible pour cette combinaison.
-            </p>
-            <AlertCircle className="hidden" />
-          </div>
+        {loadingEps ? (
+          <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+        ) : sorted.length === 0 ? (
+          <p className="text-center text-muted-foreground font-body py-8">Aucun épisode disponible.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-            {sorted.map((ep) => (
-              <EpisodeCard key={ep.id} episode={ep} blurred={blur} />
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+            {sorted.map((ep, i) => (
+              <EpisodeCard key={ep.id} episode={ep} anime={anime} index={i} />
             ))}
           </div>
         )}
-      </section>
+      </main>
 
-      <Footer />
-
-      {/* Trailer modal */}
-      {trailerOpen && (
+      {trailerOpen && anime.trailer_url && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="fixed inset-0 z-[100] bg-black/85 backdrop-blur flex items-center justify-center p-4"
+          className="fixed inset-0 z-[70] bg-black/90 backdrop-blur flex items-center justify-center p-4"
           onClick={() => setTrailerOpen(false)}
-          role="dialog"
-          aria-modal="true"
         >
           <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="relative w-full max-w-4xl aspect-video rounded-2xl overflow-hidden bg-black"
+            initial={{ scale: 0.9 }}
+            animate={{ scale: 1 }}
+            className="relative w-full max-w-4xl aspect-video"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              aria-label="Fermer"
-              onClick={() => setTrailerOpen(false)}
-              className="absolute top-3 right-3 z-10 w-10 h-10 rounded-full bg-black/70 flex items-center justify-center text-white hover:bg-black"
-            >
-              <X className="w-5 h-5" />
+            <button onClick={() => setTrailerOpen(false)} className="absolute -top-10 right-0 text-white">
+              <X className="w-6 h-6" />
             </button>
             <iframe
               src={anime.trailer_url}
-              title="Bande annonce"
-              className="w-full h-full"
+              className="w-full h-full rounded-xl"
               allow="autoplay; encrypted-media"
               allowFullScreen
             />
-            <Play className="hidden" />
           </motion.div>
         </motion.div>
       )}
+
+      <Footer />
     </motion.div>
   );
 }

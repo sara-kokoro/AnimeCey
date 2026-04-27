@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -26,17 +27,29 @@ async def lifespan(app: FastAPI):
     logger.info("Initialising database...")
     await init_db()
 
-    from bot.client import bot
-    from bot.handlers import register_all
+    bot_running = False
+    if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_API_ID:
+        try:
+            from bot.client import bot
+            from bot.handlers import register_all
 
-    register_all(bot)
+            register_all(bot)
 
-    logger.info("Starting Telegram bot...")
-    await bot.start()
-    logger.info("Bot started: @%s", bot.me.username if bot.me else "unknown")
+            logger.info("Starting Telegram bot...")
+            await bot.start()
+            bot_running = True
+            logger.info("Bot started: @%s", bot.me.username if bot.me else "unknown")
+        except Exception as exc:
+            logger.warning("Telegram bot failed to start: %s. API will run without bot.", exc)
+    else:
+        logger.info("Telegram credentials not configured. Bot disabled.")
+
     yield
-    logger.info("Stopping Telegram bot...")
-    await bot.stop()
+
+    if bot_running:
+        logger.info("Stopping Telegram bot...")
+        from bot.client import bot
+        await bot.stop()
     logger.info("Shutdown complete.")
 
 
@@ -49,7 +62,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS.split(","),
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -79,4 +92,5 @@ async def health():
 
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
