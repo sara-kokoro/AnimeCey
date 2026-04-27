@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, User, Eye, EyeOff } from "lucide-react";
 import { Footer } from "@/components/layout/Footer";
 import { cn } from "@/lib/utils";
 import { login as apiLogin, register as apiRegister } from "@/api/auth";
+import { getApiError } from "@/api/axios";
 import { useAuthStore, type AuthUser } from "@/stores/auth";
 import { toast } from "sonner";
 
@@ -12,16 +13,21 @@ type Mode = "login" | "register";
 
 export default function Auth() {
   const navigate = useNavigate();
-  const loginStore = useAuthStore((s) => s.login);
+  const location = useLocation();
+  const from = (location.state as { from?: string })?.from ?? "/";
+  const { isAuthenticated, login: loginStore } = useAuthStore();
   const [mode, setMode] = useState<Mode>("login");
   const [showPwd, setShowPwd] = useState(false);
   const [showPwd2, setShowPwd2] = useState(false);
   const [loading, setLoading] = useState(false);
-
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
+
+  if (isAuthenticated) {
+    return <Navigate to={from} replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,10 +49,9 @@ export default function Auth() {
         loginStore(data.user as unknown as AuthUser, data.access_token);
         toast.success("Compte créé !");
       }
-      navigate("/");
+      navigate(from, { replace: true });
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Erreur inconnue";
-      toast.error(msg);
+      toast.error(getApiError(err));
     } finally {
       setLoading(false);
     }

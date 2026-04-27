@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Edit, Trash2, Loader2, Star } from "lucide-react";
 import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { adminListAnimes, adminCreateAnime, adminDeleteAnime, tmdbSearch, tmdbDetails, anilistSearch, anilistDetails } from "@/api/admin";
+import { getApiError } from "@/api/axios";
 import { toast } from "sonner";
 
 interface SearchResult {
@@ -44,7 +45,7 @@ export default function AdminAnimes() {
       setSearchResults([]);
       setQuery("");
     },
-    onError: () => toast.error("Erreur lors de la création"),
+    onError: (err: unknown) => toast.error(getApiError(err, "Erreur lors de la création")),
   });
 
   const deleteMutation = useMutation({
@@ -54,7 +55,7 @@ export default function AdminAnimes() {
       qc.invalidateQueries({ queryKey: ["admin-animes"] });
       qc.invalidateQueries({ queryKey: ["admin-stats"] });
     },
-    onError: () => toast.error("Erreur lors de la suppression"),
+    onError: (err: unknown) => toast.error(getApiError(err, "Erreur lors de la suppression")),
   });
 
   const doSearch = async () => {
@@ -97,11 +98,11 @@ export default function AdminAnimes() {
         );
       }
     } catch (err: unknown) {
-      const axErr = err as { response?: { status?: number; data?: { detail?: string } } };
-      if (axErr.response?.status === 401 || axErr.response?.status === 403) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 401 || status === 403) {
         toast.error("Accès refusé — connecte-toi en tant qu'admin");
       } else {
-        toast.error(axErr.response?.data?.detail ?? "Erreur lors de la recherche");
+        toast.error(getApiError(err, "Erreur lors de la recherche"));
       }
     }
     setSearching(false);

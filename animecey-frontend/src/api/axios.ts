@@ -26,3 +26,16 @@ api.interceptors.response.use(
 );
 
 export default api;
+
+/** Extract a displayable error message from an Axios error (handles FastAPI detail string | array). */
+export function getApiError(err: unknown, fallback = "Erreur inconnue"): string {
+  const axErr = err as { response?: { data?: { detail?: unknown } } };
+  const detail = axErr?.response?.data?.detail;
+  if (!detail) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail.map((d: Record<string, unknown>) => String(d.msg ?? d.message ?? "")).filter(Boolean);
+    return msgs.length > 0 ? msgs.join(", ") : fallback;
+  }
+  return fallback;
+}
