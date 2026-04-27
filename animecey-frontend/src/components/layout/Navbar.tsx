@@ -1,9 +1,10 @@
 import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { Search, Menu, X, User } from "lucide-react";
+import { Search, Menu, X, User, LogOut, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { useAuthStore } from "@/stores/auth";
 
 const links = [
   { to: "/catalogue", label: "Catalogue" },
@@ -19,6 +20,7 @@ export function Navbar() {
   const [searchValue, setSearchValue] = useState("");
   const loc = useLocation();
   const navigate = useNavigate();
+  const { user, isAuthenticated, isAdmin, logout } = useAuthStore();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 80);
@@ -86,19 +88,53 @@ export function Navbar() {
             <Search className="w-5 h-5" />
           </button>
           <NotificationBell />
-          <Link
-            to="/profile"
-            aria-label="Profil"
-            className="hidden md:inline-flex w-10 h-10 rounded-full items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface transition-colors"
-          >
-            <User className="w-5 h-5" />
-          </Link>
-          <Link
-            to="/auth"
-            className="hidden md:inline-flex ml-1 items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold text-foreground hover:border-primary/40 transition-colors"
-          >
-            Connexion
-          </Link>
+          {isAuthenticated ? (
+            <>
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  aria-label="Admin"
+                  className="hidden md:inline-flex w-10 h-10 rounded-full items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface transition-colors"
+                >
+                  <Shield className="w-5 h-5" />
+                </Link>
+              )}
+              <Link
+                to="/profile"
+                aria-label="Profil"
+                className="hidden md:inline-flex w-10 h-10 rounded-full items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface transition-colors"
+              >
+                {user?.avatar_url ? (
+                  <img src={user.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+                ) : (
+                  <User className="w-5 h-5" />
+                )}
+              </Link>
+              <button
+                onClick={() => { logout(); navigate("/"); }}
+                className="hidden md:inline-flex ml-1 items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold text-foreground hover:border-primary/40 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Déconnexion
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                to="/profile"
+                aria-label="Profil"
+                className="hidden md:inline-flex w-10 h-10 rounded-full items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface transition-colors"
+              >
+                <User className="w-5 h-5" />
+              </Link>
+              <Link
+                to="/auth"
+                className="hidden md:inline-flex ml-1 items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold text-foreground hover:border-primary/40 transition-colors"
+              >
+                Connexion
+              </Link>
+            </>
+          )}
           <button
             aria-label="Menu"
             onClick={() => setOpen((v) => !v)}
@@ -134,13 +170,38 @@ export function Navbar() {
                   {l.label}
                 </NavLink>
               ))}
-              <Link
-                to="/auth"
-                className="mt-2 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-primary-foreground font-body font-semibold"
-              >
-                <User className="w-4 h-4" />
-                Connexion
-              </Link>
+              {isAuthenticated ? (
+                <>
+                  {isAdmin && (
+                    <Link
+                      to="/admin"
+                      className="px-3 py-3 rounded-lg font-body font-medium text-muted-foreground hover:bg-surface hover:text-foreground flex items-center gap-2"
+                    >
+                      <Shield className="w-4 h-4" /> Admin
+                    </Link>
+                  )}
+                  <Link
+                    to="/profile"
+                    className="px-3 py-3 rounded-lg font-body font-medium text-muted-foreground hover:bg-surface hover:text-foreground flex items-center gap-2"
+                  >
+                    <User className="w-4 h-4" /> {user?.username ?? "Profil"}
+                  </Link>
+                  <button
+                    onClick={() => { logout(); navigate("/"); setOpen(false); }}
+                    className="mt-2 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-surface border border-border text-foreground font-body font-semibold"
+                  >
+                    <LogOut className="w-4 h-4" /> Déconnexion
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/auth"
+                  className="mt-2 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-primary text-primary-foreground font-body font-semibold"
+                >
+                  <User className="w-4 h-4" />
+                  Connexion
+                </Link>
+              )}
             </nav>
           </motion.div>
         )}
