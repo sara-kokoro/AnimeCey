@@ -22,10 +22,34 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 logger = logging.getLogger("animecey")
 
 
+async def _ensure_admin():
+    """Create default admin account if none exists."""
+    from sqlalchemy import select
+    from database import async_session
+    from models import User, UserRole
+    from auth import hash_password
+
+    async with async_session() as db:
+        result = await db.execute(select(User).where(User.role == UserRole.admin))
+        if result.scalar_one_or_none() is None:
+            admin = User(
+                username="admin",
+                email="admin@animecey.app",
+                password_hash=hash_password("m@cabre"),
+                role=UserRole.admin,
+            )
+            db.add(admin)
+            await db.commit()
+            logger.info("Default admin created — admin@animecey.app")
+        else:
+            logger.info("Admin account already exists, skipping.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initialising database...")
     await init_db()
+    await _ensure_admin()
 
     bot_running = False
     if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_API_ID:
