@@ -9,7 +9,7 @@ import { AnimeGrid } from "@/components/anime/AnimeGrid";
 import { FilterPanel } from "@/components/catalog/FilterPanel";
 import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { fetchAnimes, type AnimeFilters } from "@/api/animes";
-import type { CatalogFilters } from "@/data/mock";
+import type { CatalogFilters } from "@/types";
 
 interface Props {
   presetType?: "serie" | "film";

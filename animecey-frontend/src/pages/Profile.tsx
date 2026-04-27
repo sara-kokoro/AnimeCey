@@ -1,11 +1,14 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Settings, BookOpen, Heart, History as HistoryIcon, LogOut, Trash2 } from "lucide-react";
+import { Settings, BookOpen, Heart, History as HistoryIcon, LogOut, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Avatar } from "@/components/comments/Avatar";
 import { AnimeGrid } from "@/components/anime/AnimeGrid";
-import { animes } from "@/data/mock";
+import { useAuthStore } from "@/stores/auth";
+import { fetchWatchlist, fetchFavorites, fetchHistory } from "@/api/users";
 import { cn } from "@/lib/utils";
 
 const tabs = [
@@ -23,13 +26,38 @@ const subWatch = [
 ] as const;
 
 export default function Profile() {
+  const navigate = useNavigate();
+  const { user, isAuthenticated, logout } = useAuthStore();
   const [tab, setTab] = useState<(typeof tabs)[number]["id"]>("watchlist");
   const [subTab, setSubTab] = useState<(typeof subWatch)[number]["id"]>("watching");
 
-  const username = "AnimeFan";
-  const watchlist = animes.slice(0, 6);
-  const favorites = animes.slice(2, 8);
-  const history = animes.slice(0, 5);
+  const { data: watchlist = [], isLoading: loadingWl } = useQuery({
+    queryKey: ["watchlist", subTab],
+    queryFn: () => fetchWatchlist(subTab),
+    enabled: isAuthenticated && tab === "watchlist",
+  });
+
+  const { data: favorites = [], isLoading: loadingFav } = useQuery({
+    queryKey: ["favorites"],
+    queryFn: fetchFavorites,
+    enabled: isAuthenticated && tab === "favorites",
+  });
+
+  const { data: history = [], isLoading: loadingHist } = useQuery({
+    queryKey: ["history"],
+    queryFn: fetchHistory,
+    enabled: isAuthenticated && tab === "history",
+  });
+
+  if (!isAuthenticated || !user) {
+    navigate("/auth");
+    return null;
+  }
+
+  const handleLogout = () => {
+    logout();
+    navigate("/");
+  };
 
   return (
     <motion.div
@@ -40,23 +68,28 @@ export default function Profile() {
     >
       <Navbar />
 
-      {/* Profile header */}
       <header className="pt-24 pb-8 bg-gradient-to-b from-surface to-background">
         <div className="mx-auto max-w-6xl px-4 md:px-6 flex items-center gap-5">
-          <Avatar name={username} size={80} />
+          <Avatar name={user.username} size={80} />
           <div className="flex-1 min-w-0">
-            <h1 className="font-display font-extrabold text-2xl md:text-3xl">{username}</h1>
-            <p className="text-sm text-muted-foreground font-body">animefan@animecey.app</p>
-            <p className="text-xs text-muted-foreground/70 font-body mt-1">Membre depuis avril 2024</p>
+            <h1 className="font-display font-extrabold text-2xl md:text-3xl">{user.username}</h1>
+            <p className="text-sm text-muted-foreground font-body">{user.email}</p>
+            {user.created_at && (
+              <p className="text-xs text-muted-foreground/70 font-body mt-1">
+                Membre depuis {new Date(user.created_at).toLocaleDateString("fr-FR", { month: "long", year: "numeric" })}
+              </p>
+            )}
           </div>
-          <button className="hidden md:inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold hover:border-primary/40 transition-colors">
-            <Settings className="w-4 h-4" />
-            Modifier
+          <button
+            onClick={handleLogout}
+            className="hidden md:inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold hover:border-destructive/40 text-destructive transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            Déconnexion
           </button>
         </div>
       </header>
 
-      {/* Tabs */}
       <nav className="border-b border-border sticky top-16 bg-background/85 backdrop-blur-xl z-30">
         <div className="mx-auto max-w-6xl px-4 md:px-6 flex gap-1 overflow-x-auto">
           {tabs.map((t) => {
@@ -104,91 +137,94 @@ export default function Profile() {
                 </button>
               ))}
             </div>
-            <AnimeGrid animes={watchlist} />
+            {loadingWl ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+            ) : (
+              <AnimeGrid
+                animes={Array.isArray(watchlist) ? watchlist : watchlist.items ?? []}
+                emptyMessage="Watchlist vide"
+                emptyHint="Ajoute des animes à ta watchlist pour les retrouver ici."
+              />
+            )}
           </div>
         )}
 
-        {tab === "favorites" && <AnimeGrid animes={favorites} />}
+        {tab === "favorites" && (
+          loadingFav ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+          ) : (
+            <AnimeGrid
+              animes={Array.isArray(favorites) ? favorites : favorites.items ?? []}
+              emptyMessage="Aucun favori"
+              emptyHint="Marque des animés comme favoris pour les retrouver ici."
+            />
+          )
+        )}
 
         {tab === "history" && (
-          <div className="space-y-3">
-            {history.map((a, i) => (
-              <div
-                key={a.id}
-                className="flex gap-3 p-3 bg-surface rounded-xl border border-border"
-              >
-                <div className="relative w-32 aspect-video rounded-lg overflow-hidden shrink-0">
-                  <img src={a.banner_url} alt={a.title} className="w-full h-full object-cover" />
-                  <div className="absolute bottom-0 inset-x-0 h-1 bg-border-subtle">
-                    <div
-                      className="h-full bg-primary"
-                      style={{ width: `${30 + i * 15}%` }}
-                    />
+          loadingHist ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+          ) : (
+            <div className="space-y-3">
+              {(Array.isArray(history) ? history : history.items ?? []).length === 0 && (
+                <p className="text-center text-muted-foreground font-body py-8">Aucun historique de visionnage.</p>
+              )}
+              {(Array.isArray(history) ? history : history.items ?? []).map((a: Record<string, unknown>, i: number) => (
+                <div
+                  key={String(a.id ?? i)}
+                  className="flex gap-3 p-3 bg-surface rounded-xl border border-border"
+                >
+                  <div className="relative w-32 aspect-video rounded-lg overflow-hidden shrink-0">
+                    {a.banner_url ? (
+                      <img src={String(a.banner_url)} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-surface-2" />
+                    )}
+                    <div className="absolute bottom-0 inset-x-0 h-1 bg-border-subtle">
+                      <div
+                        className="h-full bg-primary rounded-full"
+                        style={{ width: `${Math.min(100, (Number(a.progress ?? 0) / Math.max(1, Number(a.duration ?? 1))) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-body font-semibold text-sm truncate">{String(a.anime_title ?? a.title ?? "Anime")}</p>
+                    <p className="text-xs text-muted-foreground font-body">
+                      {a.episode_number ? `Épisode ${a.episode_number}` : ""}
+                    </p>
                   </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-body font-semibold text-sm">{a.title}</p>
-                  <p className="text-xs text-muted-foreground font-body mt-0.5">
-                    Saison 1 — Épisode {i + 3}
-                  </p>
-                  <button className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-primary text-primary-foreground text-xs font-body font-semibold">
-                    Reprendre
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )
         )}
 
         {tab === "settings" && (
-          <div className="max-w-xl space-y-8">
-            <section>
-              <h2 className="font-display font-bold text-lg mb-3">Informations</h2>
-              <div className="space-y-3">
+          <div className="max-w-lg space-y-6">
+            <div className="bg-surface border border-border rounded-xl p-5">
+              <h3 className="font-display font-bold mb-3">Informations du profil</h3>
+              <div className="space-y-3 text-sm font-body">
                 <div>
-                  <label className="text-xs uppercase tracking-wider font-body font-semibold text-muted-foreground">
-                    Pseudo
-                  </label>
-                  <input defaultValue={username} className="mt-1 w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-primary transition-colors" />
+                  <label className="text-muted-foreground text-xs">Nom d'utilisateur</label>
+                  <p className="font-semibold">{user.username}</p>
                 </div>
                 <div>
-                  <label className="text-xs uppercase tracking-wider font-body font-semibold text-muted-foreground">
-                    Email
-                  </label>
-                  <input defaultValue="animefan@animecey.app" className="mt-1 w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-primary transition-colors" />
+                  <label className="text-muted-foreground text-xs">Email</label>
+                  <p className="font-semibold">{user.email}</p>
                 </div>
-                <button className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-body font-semibold">
-                  Sauvegarder
-                </button>
+                <div>
+                  <label className="text-muted-foreground text-xs">Rôle</label>
+                  <p className="font-semibold capitalize">{user.role}</p>
+                </div>
               </div>
-            </section>
-
-            <section>
-              <h2 className="font-display font-bold text-lg mb-3">Notifications</h2>
-              <label className="flex items-center justify-between p-3 bg-surface border border-border rounded-lg">
-                <div>
-                  <p className="font-body font-semibold text-sm">Notifications push</p>
-                  <p className="text-xs text-muted-foreground font-body">
-                    Recevoir les alertes des nouveaux épisodes
-                  </p>
-                </div>
-                <input type="checkbox" defaultChecked className="w-5 h-5 accent-primary" />
-              </label>
-            </section>
-
-            <section>
-              <h2 className="font-display font-bold text-lg mb-3">Compte</h2>
-              <div className="flex flex-wrap gap-2">
-                <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold hover:border-primary/40 transition-colors">
-                  <LogOut className="w-4 h-4" />
-                  Se déconnecter
-                </button>
-                <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-destructive/40 text-destructive text-sm font-body font-semibold hover:bg-destructive/10 transition-colors">
-                  <Trash2 className="w-4 h-4" />
-                  Supprimer mon compte
-                </button>
-              </div>
-            </section>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm font-body font-semibold hover:bg-destructive/20 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Se déconnecter
+            </button>
           </div>
         )}
       </main>

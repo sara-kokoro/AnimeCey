@@ -1,12 +1,13 @@
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { useState } from "react";
-import { Info, Sparkles, AlertTriangle, Wrench, X } from "lucide-react";
+import { Info, Sparkles, AlertTriangle, Wrench, X, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { useNotificationStore } from "@/stores/notifications";
-import type { MockNotification } from "@/data/mock";
+import type { Notification } from "@/api/notifications";
 import { cn } from "@/lib/utils";
 
 const typeIcon = { info: Info, new: Sparkles, alert: AlertTriangle, maintenance: Wrench };
@@ -19,8 +20,12 @@ const typeColor = {
 const typeLabel = { info: "Info", new: "Nouveauté", alert: "Alerte", maintenance: "Maintenance" };
 
 export default function Notifications() {
-  const { notifications, markAllAsRead, markAsRead } = useNotificationStore();
-  const [open, setOpen] = useState<MockNotification | null>(null);
+  const { notifications, isLoading, load, markAllAsRead, markAsRead } = useNotificationStore();
+  const [open, setOpen] = useState<Notification | null>(null);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <motion.div
@@ -46,43 +51,49 @@ export default function Notifications() {
           </button>
         </div>
 
-        <div className="space-y-2">
-          {notifications.map((n) => {
-            const Icon = typeIcon[n.type];
-            return (
-              <button
-                key={n.id}
-                onClick={() => {
-                  setOpen(n);
-                  if (!n.is_read) markAsRead(n.id);
-                }}
-                className={cn(
-                  "w-full text-left p-4 rounded-xl border border-border bg-surface hover:border-primary/40 transition-all",
-                  !n.is_read && "bg-surface-2",
-                )}
-              >
-                <div className="flex gap-3">
-                  <Icon className={cn("w-5 h-5 mt-0.5 shrink-0", typeColor[n.type])} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-display font-semibold">{n.title}</h3>
-                      <span className="text-[10px] uppercase tracking-wider font-body font-bold text-muted-foreground">
-                        {typeLabel[n.type]}
-                      </span>
+        {isLoading ? (
+          <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+        ) : notifications.length === 0 ? (
+          <p className="text-center text-muted-foreground font-body py-12">Aucune notification.</p>
+        ) : (
+          <div className="space-y-2">
+            {notifications.map((n) => {
+              const Icon = typeIcon[n.type] ?? Info;
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => {
+                    setOpen(n);
+                    if (!n.is_read) markAsRead(n.id);
+                  }}
+                  className={cn(
+                    "w-full text-left p-4 rounded-xl border border-border bg-surface hover:border-primary/40 transition-all",
+                    !n.is_read && "bg-surface-2",
+                  )}
+                >
+                  <div className="flex gap-3">
+                    <Icon className={cn("w-5 h-5 mt-0.5 shrink-0", typeColor[n.type] ?? "text-muted-foreground")} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-display font-semibold">{n.title}</h3>
+                        <span className="text-[10px] uppercase tracking-wider font-body font-bold text-muted-foreground">
+                          {typeLabel[n.type] ?? n.type}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground font-body mt-1 line-clamp-2">
+                        {n.content}
+                      </p>
+                      <p className="text-xs text-muted-foreground/70 font-body mt-1.5">
+                        {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: fr })}
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground font-body mt-1 line-clamp-2">
-                      {n.content}
-                    </p>
-                    <p className="text-xs text-muted-foreground/70 font-body mt-1.5">
-                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true, locale: fr })}
-                    </p>
+                    {!n.is_read && <span className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0" />}
                   </div>
-                  {!n.is_read && <span className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0" />}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </main>
 
       {open && (
@@ -107,7 +118,7 @@ export default function Notifications() {
               <X className="w-4 h-4" />
             </button>
             <span className="text-[10px] uppercase tracking-wider font-body font-bold text-primary">
-              {typeLabel[open.type]}
+              {typeLabel[open.type] ?? open.type}
             </span>
             <h2 className="font-display font-bold text-2xl mt-1">{open.title}</h2>
             {open.image_url && (
@@ -116,9 +127,14 @@ export default function Notifications() {
               </div>
             )}
             {open.caption && (
-              <p className="italic text-sm text-muted-foreground font-body mt-2">{open.caption}</p>
+              <p className="text-xs text-muted-foreground font-body italic mt-2">
+                {open.caption}
+              </p>
             )}
-            <p className="text-foreground font-body mt-4 leading-relaxed">{open.content}</p>
+            <p className="text-foreground/90 font-body mt-4 leading-relaxed">{open.content}</p>
+            <p className="text-xs text-muted-foreground/70 font-body mt-4">
+              {formatDistanceToNow(new Date(open.created_at), { addSuffix: true, locale: fr })}
+            </p>
           </motion.div>
         </motion.div>
       )}

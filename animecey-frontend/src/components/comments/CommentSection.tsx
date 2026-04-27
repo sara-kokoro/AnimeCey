@@ -1,11 +1,13 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart, Send } from "lucide-react";
+import { Heart, Send, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { Link } from "react-router-dom";
 import { Avatar } from "./Avatar";
-import { getComments, type MockComment } from "@/data/mock";
+import { fetchComments, createComment, likeComment, unlikeComment, type CommentData } from "@/api/comments";
+import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/utils";
 
 function CommentItem({
@@ -13,13 +15,23 @@ function CommentItem({
   onReply,
   isReply,
 }: {
-  comment: MockComment;
+  comment: CommentData;
   onReply?: (parentId: number, content: string) => void;
   isReply?: boolean;
 }) {
+  const qc = useQueryClient();
   const [liked, setLiked] = useState(comment.is_liked_by_me);
+  const [likesCount, setLikesCount] = useState(comment.likes_count);
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyText, setReplyText] = useState("");
+
+  const likeMutation = useMutation({
+    mutationFn: () => liked ? unlikeComment(comment.id) : likeComment(comment.id),
+    onSuccess: (data) => {
+      setLiked(data.liked);
+      setLikesCount(data.likes_count);
+    },
+  });
 
   return (
     <div className={cn("flex gap-3", isReply && "ml-8 pl-4 border-l-2 border-border-subtle")}>
@@ -36,13 +48,13 @@ function CommentItem({
         <p className="text-sm text-foreground font-body mt-1 leading-relaxed">{comment.content}</p>
         <div className="flex items-center gap-4 mt-2">
           <button
-            onClick={() => setLiked((v) => !v)}
+            onClick={() => likeMutation.mutate()}
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <motion.span key={String(liked)} initial={{ scale: 0.6 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 400, damping: 14 }}>
               <Heart className={cn("w-3.5 h-3.5", liked && "fill-primary text-primary")} />
             </motion.span>
-            {comment.likes_count + (liked ? 1 : 0)}
+            {likesCount}
           </button>
           {!isReply && onReply && (
             <button
@@ -100,114 +112,95 @@ function CommentItem({
 }
 
 export function CommentSection({ episodeId }: { episodeId: number }) {
-  const [comments, setComments] = useState<MockComment[]>(() => getComments(episodeId));
+  const qc = useQueryClient();
+  const { isAuthenticated } = useAuthStore();
   const [text, setText] = useState("");
+  const [page, setPage] = useState(1);
   const max = 500;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["comments", episodeId, page],
+    queryFn: () => fetchComments(episodeId, page, 20),
+  });
+
+  const comments = data?.items ?? [];
+
+  const submitMutation = useMutation({
+    mutationFn: (payload: { episode_id: number; content: string; parent_id?: number }) => createComment(payload),
+    onSuccess: () => {
+      setText("");
+      qc.invalidateQueries({ queryKey: ["comments", episodeId] });
+    },
+  });
 
   const submit = () => {
     const t = text.trim();
-    if (!t) return;
-    const c: MockComment = {
-      id: Date.now(),
-      episode_id: episodeId,
-      user: { id: 0, username: "Toi" },
-      content: t,
-      likes_count: 0,
-      is_liked_by_me: false,
-      created_at: new Date().toISOString(),
-      replies: [],
-    };
-    setComments((cs) => [c, ...cs]);
-    setText("");
+    if (!t || !isAuthenticated) return;
+    submitMutation.mutate({ episode_id: episodeId, content: t });
   };
 
   const onReply = (parentId: number, content: string) => {
-    setComments((cs) =>
-      cs.map((c) =>
-        c.id === parentId
-          ? {
-              ...c,
-              replies: [
-                ...(c.replies ?? []),
-                {
-                  id: Date.now(),
-                  episode_id: episodeId,
-                  user: { id: 0, username: "Toi" },
-                  content,
-                  likes_count: 0,
-                  is_liked_by_me: false,
-                  parent_id: parentId,
-                  created_at: new Date().toISOString(),
-                },
-              ],
-            }
-          : c,
-      ),
-    );
+    if (!isAuthenticated) return;
+    submitMutation.mutate({ episode_id: episodeId, content, parent_id: parentId });
   };
 
   return (
-    <section id="comments" className="px-4 md:px-0 mt-10">
-      <h2 className="font-display font-bold text-xl mb-4">
-        Commentaires <span className="text-muted-foreground font-normal">({comments.length})</span>
-      </h2>
+    <div>
+      <h3 className="font-display font-bold text-lg mb-4">
+        Commentaires {data?.total ? `(${data.total})` : ""}
+      </h3>
 
-      {/* Connected form (mock) */}
-      <div className="bg-surface border border-border rounded-xl p-4 mb-6">
-        <div className="flex gap-3">
-          <Avatar name="Toi" />
-          <div className="flex-1 min-w-0">
+      {isAuthenticated ? (
+        <div className="mb-6">
+          <div className="relative">
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value.slice(0, max))}
-              placeholder="Écris un commentaire..."
+              placeholder="Partage ton avis..."
               rows={3}
-              className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-body resize-none focus:outline-none focus:border-primary transition-colors"
+              className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-sm font-body focus:outline-none focus:border-primary transition-colors resize-none"
             />
-            <div className="flex items-center justify-between mt-2">
-              <span
-                className={cn(
-                  "text-xs font-body",
-                  text.length > max * 0.9 ? "text-destructive" : "text-muted-foreground",
-                )}
-              >
-                {text.length} / {max}
-              </span>
-              <button
-                disabled={!text.trim()}
-                onClick={submit}
-                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-body font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary-dim transition-colors"
-              >
-                Publier
-              </button>
-            </div>
+            <span className="absolute bottom-3 right-3 text-[10px] text-muted-foreground/60 font-body">
+              {text.length}/{max}
+            </span>
+          </div>
+          <div className="flex justify-end mt-2">
+            <button
+              onClick={submit}
+              disabled={!text.trim() || submitMutation.isPending}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-body font-semibold disabled:opacity-40"
+            >
+              {submitMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              Publier
+            </button>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="mb-6 bg-surface border border-border rounded-xl p-4 text-center">
+          <p className="text-sm text-muted-foreground font-body">
+            <Link to="/auth" className="text-primary font-semibold hover:underline">Connecte-toi</Link>
+            {" "}pour commenter.
+          </p>
+        </div>
+      )}
 
-      {/* Auth banner (UI only) */}
-      <Link
-        to="/auth"
-        className="block mb-6 p-3 rounded-lg border border-border-subtle bg-surface-2/50 text-sm font-body text-muted-foreground hover:border-primary/40 transition-colors text-center"
-      >
-        Connecte-toi pour commenter avec ton pseudo
-      </Link>
-
-      <div className="space-y-6">
-        <AnimatePresence initial={false}>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+      ) : comments.length === 0 ? (
+        <p className="text-center text-muted-foreground font-body py-8">Aucun commentaire. Sois le premier !</p>
+      ) : (
+        <div className="space-y-5">
           {comments.map((c) => (
-            <motion.div
-              key={c.id}
-              initial={{ opacity: 0, y: -8, backgroundColor: "hsl(var(--primary) / 0.05)" }}
-              animate={{ opacity: 1, y: 0, backgroundColor: "hsl(var(--primary) / 0)" }}
-              transition={{ duration: 0.4 }}
-              className="rounded-lg"
-            >
-              <CommentItem comment={c} onReply={onReply} />
-            </motion.div>
+            <CommentItem key={c.id} comment={c} onReply={onReply} />
           ))}
-        </AnimatePresence>
-      </div>
-    </section>
+          {(data?.pages ?? 1) > 1 && (
+            <div className="flex justify-center gap-2 pt-4">
+              <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="px-3 py-1.5 rounded-lg text-xs font-body font-semibold bg-surface border border-border disabled:opacity-40">Précédent</button>
+              <button disabled={page >= (data?.pages ?? 1)} onClick={() => setPage((p) => p + 1)} className="px-3 py-1.5 rounded-lg text-xs font-body font-semibold bg-surface border border-border disabled:opacity-40">Suivant</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

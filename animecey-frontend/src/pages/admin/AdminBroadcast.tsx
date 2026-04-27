@@ -1,209 +1,151 @@
 import { useState } from "react";
-import { Info, Sparkles, AlertTriangle, Wrench, ImagePlus, X } from "lucide-react";
-import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
-import { mockBroadcasts } from "@/data/mock";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Send, Trash2, Loader2, Info, Sparkles, AlertTriangle, Wrench } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
+import { adminListBroadcasts, adminCreateBroadcast, adminDeleteBroadcast } from "@/api/admin";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
-const types = [
-  { value: "info", label: "Info", icon: Info, color: "text-info" },
-  { value: "new", label: "Nouveauté", icon: Sparkles, color: "text-primary" },
-  { value: "alert", label: "Alerte", icon: AlertTriangle, color: "text-destructive" },
-  { value: "maintenance", label: "Maintenance", icon: Wrench, color: "text-warning" },
-] as const;
+const typeOptions = [
+  { value: "info", label: "Info", icon: Info },
+  { value: "new", label: "Nouveauté", icon: Sparkles },
+  { value: "alert", label: "Alerte", icon: AlertTriangle },
+  { value: "maintenance", label: "Maintenance", icon: Wrench },
+];
 
 export default function AdminBroadcast() {
-  const [type, setType] = useState<(typeof types)[number]["value"]>("new");
-  const [target, setTarget] = useState<"all" | "users">("all");
+  const qc = useQueryClient();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [imgUrl, setImgUrl] = useState("");
-  const [caption, setCaption] = useState("");
+  const [type, setType] = useState("info");
+  const [target, setTarget] = useState("all");
 
-  const TypeIcon = types.find((t) => t.value === type)!.icon;
-  const typeColor = types.find((t) => t.value === type)!.color;
+  const { data: broadcasts = [], isLoading } = useQuery({
+    queryKey: ["admin-broadcasts"],
+    queryFn: adminListBroadcasts,
+  });
 
-  const send = () => {
-    if (!title.trim() || !content.trim()) {
-      toast.error("Renseigne au moins un titre et un contenu");
-      return;
-    }
-    toast.success(`Broadcast envoyé à ${target === "all" ? "tous les visiteurs" : "tous les utilisateurs"}`);
-    setTitle("");
-    setContent("");
-    setImgUrl("");
-    setCaption("");
-  };
+  const sendMutation = useMutation({
+    mutationFn: () => adminCreateBroadcast({ title, content, type, target }),
+    onSuccess: () => {
+      toast.success("Broadcast envoyé !");
+      qc.invalidateQueries({ queryKey: ["admin-broadcasts"] });
+      setTitle("");
+      setContent("");
+    },
+    onError: () => toast.error("Erreur lors de l'envoi"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => adminDeleteBroadcast(id),
+    onSuccess: () => {
+      toast.success("Broadcast supprimé");
+      qc.invalidateQueries({ queryKey: ["admin-broadcasts"] });
+    },
+    onError: () => toast.error("Erreur"),
+  });
 
   return (
     <div>
-      <h1 className="font-display font-extrabold text-3xl mb-1">Broadcast</h1>
-      <p className="text-muted-foreground font-body mb-6">Envoie un message à tous les visiteurs ou utilisateurs.</p>
+      <h1 className="font-display font-extrabold text-3xl mb-1">Broadcasts</h1>
+      <p className="text-muted-foreground font-body mb-6">Envoie des notifications à tous les utilisateurs.</p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6">
-        {/* Form */}
-        <section className="bg-surface border border-border rounded-xl p-5 space-y-5">
-          <div>
-            <label className="text-xs uppercase tracking-wider font-body font-semibold text-muted-foreground">
-              Titre
-            </label>
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="mt-1 w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-primary transition-colors"
-            />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section className="bg-surface border border-border rounded-xl p-5">
+          <h2 className="font-display font-bold text-lg mb-4">Nouveau broadcast</h2>
+          <div className="space-y-4">
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold">Titre</label>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Nouveaux épisodes disponibles..."
+                className="mt-1 w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-primary transition-colors"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold">Message</label>
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={4}
+                placeholder="Le contenu du message..."
+                className="mt-1 w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-primary transition-colors resize-none"
+              />
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold">Type</label>
+                <select
+                  value={type}
+                  onChange={(e) => setType(e.target.value)}
+                  className="mt-1 w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-body"
+                >
+                  {typeOptions.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex-1">
+                <label className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold">Cible</label>
+                <select
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                  className="mt-1 w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-body"
+                >
+                  <option value="all">Tout le monde</option>
+                  <option value="users">Utilisateurs inscrits</option>
+                </select>
+              </div>
+            </div>
+            <button
+              onClick={() => sendMutation.mutate()}
+              disabled={!title.trim() || !content.trim() || sendMutation.isPending}
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-body font-semibold disabled:opacity-50"
+            >
+              {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {sendMutation.isPending ? "Envoi..." : "Envoyer"}
+            </button>
           </div>
+        </section>
 
-          <div>
-            <label className="text-xs uppercase tracking-wider font-body font-semibold text-muted-foreground block mb-2">
-              Type
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {types.map((t) => {
-                const Icon = t.icon;
-                const active = type === t.value;
+        <section className="bg-surface border border-border rounded-xl p-5">
+          <h2 className="font-display font-bold text-lg mb-4">Historique</h2>
+          {isLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
+          ) : (
+            <div className="space-y-3 max-h-[500px] overflow-y-auto">
+              {broadcasts.length === 0 && (
+                <p className="text-sm text-muted-foreground font-body py-4 text-center">Aucun broadcast envoyé.</p>
+              )}
+              {(Array.isArray(broadcasts) ? broadcasts : broadcasts.items ?? []).map((b: Record<string, unknown>) => {
+                const TypeIcon = typeOptions.find((t) => t.value === b.type)?.icon ?? Info;
                 return (
-                  <button
-                    key={t.value}
-                    onClick={() => setType(t.value)}
-                    className={cn(
-                      "inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm font-body font-semibold transition-all",
-                      active
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "bg-surface-2 border-border text-muted-foreground hover:border-primary/40",
-                    )}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {t.label}
-                  </button>
+                  <div key={String(b.id)} className="p-3 rounded-lg bg-surface-2 border border-border group">
+                    <div className="flex items-start gap-3">
+                      <TypeIcon className="w-4 h-4 mt-0.5 text-primary shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-body font-semibold text-sm">{String(b.title)}</p>
+                        <p className="text-xs text-muted-foreground font-body mt-0.5 line-clamp-2">{String(b.content)}</p>
+                        <p className="text-[10px] text-muted-foreground/70 font-body mt-1">
+                          {b.created_at ? formatDistanceToNow(new Date(String(b.created_at)), { addSuffix: true, locale: fr }) : ""}
+                          {b.reads_count != null && ` · ${b.reads_count} lu${Number(b.reads_count) > 1 ? "s" : ""}`}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => deleteMutation.mutate(Number(b.id))}
+                        className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-md hover:bg-destructive/10 text-destructive flex items-center justify-center transition-opacity"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wider font-body font-semibold text-muted-foreground block mb-2">
-              Cible
-            </label>
-            <ToggleGroup2
-              value={target}
-              onChange={(v) => setTarget(v as "all" | "users")}
-              options={[
-                { value: "all", label: "Tous les visiteurs" },
-                { value: "users", label: "Utilisateurs connectés" },
-              ]}
-            />
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wider font-body font-semibold text-muted-foreground">
-              Contenu
-            </label>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              rows={6}
-              className="mt-1 w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-body resize-none focus:outline-none focus:border-primary transition-colors"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wider font-body font-semibold text-muted-foreground">
-              Image (URL)
-            </label>
-            <div className="mt-1 flex gap-2">
-              <input
-                value={imgUrl}
-                onChange={(e) => setImgUrl(e.target.value)}
-                placeholder="https://..."
-                className="flex-1 bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:border-primary transition-colors"
-              />
-              {imgUrl && (
-                <button onClick={() => setImgUrl("")} aria-label="Retirer" className="px-3 rounded-lg bg-surface-2 border border-border">
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-              {!imgUrl && (
-                <button className="inline-flex items-center gap-2 px-3 rounded-lg bg-surface-2 border border-border text-sm font-body font-semibold">
-                  <ImagePlus className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-            {imgUrl && (
-              <input
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                placeholder="Légende de l'image..."
-                className="mt-2 w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-body italic focus:outline-none focus:border-primary transition-colors"
-              />
-            )}
-          </div>
-
-          <button
-            onClick={send}
-            className="w-full md:w-auto px-6 py-3 rounded-lg bg-primary text-primary-foreground font-body font-semibold"
-          >
-            Envoyer à {target === "all" ? "tous" : "aux utilisateurs"}
-          </button>
+          )}
         </section>
-
-        {/* Preview */}
-        <aside>
-          <p className="text-xs uppercase tracking-wider font-body font-semibold text-muted-foreground mb-2">
-            Aperçu
-          </p>
-          <div className="bg-surface border border-border rounded-xl p-4">
-            <div className="flex gap-3">
-              <TypeIcon className={cn("w-4 h-4 mt-0.5 shrink-0", typeColor)} />
-              <div className="flex-1 min-w-0">
-                <p className="font-body font-semibold text-sm">{title || "Titre du broadcast"}</p>
-                <p className="text-xs text-muted-foreground font-body line-clamp-3 mt-0.5">
-                  {content || "Contenu du message..."}
-                </p>
-                {imgUrl && (
-                  <div className="mt-2 rounded-lg overflow-hidden">
-                    <img src={imgUrl} alt="" className="w-full h-auto" />
-                  </div>
-                )}
-                {caption && <p className="italic text-xs text-muted-foreground font-body mt-1">{caption}</p>}
-                <p className="text-[11px] text-muted-foreground/70 font-body mt-1.5">à l'instant</p>
-              </div>
-            </div>
-          </div>
-        </aside>
       </div>
-
-      <section className="mt-10">
-        <h2 className="font-display font-bold text-lg mb-3">Historique des broadcasts</h2>
-        <div className="bg-surface border border-border rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 border-b border-border">
-              <tr className="text-left font-body font-semibold text-muted-foreground">
-                <th className="px-4 py-3">Titre</th>
-                <th className="px-4 py-3 hidden md:table-cell">Type</th>
-                <th className="px-4 py-3 hidden md:table-cell">Cible</th>
-                <th className="px-4 py-3 hidden md:table-cell">Lectures</th>
-                <th className="px-4 py-3">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mockBroadcasts.map((b) => (
-                <tr key={b.id} className="border-b border-border-subtle last:border-b-0">
-                  <td className="px-4 py-3 font-body font-semibold">{b.title}</td>
-                  <td className="px-4 py-3 hidden md:table-cell text-muted-foreground capitalize">{b.type}</td>
-                  <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">{b.target}</td>
-                  <td className="px-4 py-3 hidden md:table-cell text-muted-foreground">{b.reads_count}</td>
-                  <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {formatDistanceToNow(new Date(b.created_at), { addSuffix: true, locale: fr })}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </div>
   );
 }

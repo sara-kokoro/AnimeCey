@@ -1,5 +1,6 @@
 import { useParams, Navigate, Link, useNavigate } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Heart, Loader2 } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
@@ -7,30 +8,58 @@ import { Footer } from "@/components/layout/Footer";
 import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
-import { getEpisodeById, getEpisodes } from "@/data/mock";
+import { fetchEpisode, fetchEpisodes, getStreamUrl } from "@/api/episodes";
+import { fetchAnime } from "@/api/animes";
 import type { Language } from "@/types";
 
 export default function Watch() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const data = getEpisodeById(Number(id));
 
   const [serveur, setServeur] = useState<"servcey1" | "servcey2">("servcey1");
   const [language, setLanguage] = useState<Language | null>(null);
   const [liked, setLiked] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const lang = (language ?? data?.episode.language) as Language;
+  const { data: episode, isLoading: loadingEp } = useQuery({
+    queryKey: ["episode", Number(id)],
+    queryFn: () => fetchEpisode(Number(id)),
+    enabled: !!id,
+  });
 
-  const episodes = useMemo(() => {
-    if (!data) return [];
-    return getEpisodes(data.anime.id, lang, data.episode.season_number);
-  }, [data, lang]);
+  const animeId = episode?.anime_id;
+  const { data: anime } = useQuery({
+    queryKey: ["anime", animeId],
+    queryFn: () => fetchAnime(animeId!),
+    enabled: !!animeId,
+  });
 
-  if (!data) return <Navigate to="/" replace />;
-  const { episode, anime } = data;
+  const lang = (language ?? episode?.language ?? "VOSTFR") as Language;
+  const seasonNum = episode?.season_number ?? 1;
 
-  const currentIndex = episodes.findIndex((e) => e.episode_number === episode.episode_number);
+  const { data: episodes = [] } = useQuery({
+    queryKey: ["episodes", animeId, lang, seasonNum],
+    queryFn: () => fetchEpisodes(animeId!, lang, seasonNum),
+    enabled: !!animeId,
+  });
+
+  const { data: streamData } = useQuery({
+    queryKey: ["stream", Number(id), serveur],
+    queryFn: () => getStreamUrl(Number(id), serveur),
+    enabled: !!id,
+  });
+
+  if (loadingEp) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!episode) return <Navigate to="/" replace />;
+
+  const currentIndex = episodes.findIndex((e) => e.id === episode.id);
   const prev = currentIndex > 0 ? episodes[currentIndex - 1] : null;
   const next = currentIndex >= 0 && currentIndex < episodes.length - 1 ? episodes[currentIndex + 1] : null;
 
@@ -45,28 +74,32 @@ export default function Watch() {
 
       <div className="pt-16 mx-auto max-w-[1500px] px-0 md:px-6 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
         <div className="min-w-0">
-          {/* Player */}
           <div className="relative w-full aspect-video bg-black md:rounded-2xl overflow-hidden">
             {loading && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <Loader2 className="w-10 h-10 text-primary animate-spin" />
               </div>
             )}
-            <motion.iframe
-              key={`${episode.id}-${serveur}-${lang}`}
-              src="about:blank"
-              title={`${anime.title} - ${episode.title}`}
-              className="w-full h-full"
-              allow="autoplay; encrypted-media; fullscreen"
-              allowFullScreen
-              onLoad={() => setLoading(false)}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.4 }}
-            />
+            {streamData?.url ? (
+              <motion.iframe
+                key={`${episode.id}-${serveur}-${lang}`}
+                src={streamData.url}
+                title={`${anime?.title ?? "Anime"} - ${episode.title ?? `Épisode ${episode.episode_number}`}`}
+                className="w-full h-full"
+                allow="autoplay; encrypted-media; fullscreen"
+                allowFullScreen
+                onLoad={() => setLoading(false)}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.4 }}
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-muted-foreground font-body text-sm">
+                {loading ? "" : "Source non disponible pour ce serveur."}
+              </div>
+            )}
           </div>
 
-          {/* Controls */}
           <div className="px-4 md:px-0 mt-4 flex flex-col md:flex-row gap-4 md:items-end md:justify-between">
             <div className="flex flex-wrap gap-5">
               <div>
@@ -76,24 +109,26 @@ export default function Watch() {
                 <ToggleGroup2
                   size="sm"
                   value={serveur}
-                  onChange={(v) => setServeur(v as "servcey1" | "servcey2")}
+                  onChange={(v) => { setServeur(v as "servcey1" | "servcey2"); setLoading(true); }}
                   options={[
                     { value: "servcey1", label: "ServCey 1" },
                     { value: "servcey2", label: "ServCey 2" },
                   ]}
                 />
               </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold mb-1.5">
-                  Langue
-                </p>
-                <ToggleGroup2
-                  size="sm"
-                  value={lang}
-                  onChange={(v) => setLanguage(v as Language)}
-                  options={anime.languages_available.map((l) => ({ value: l, label: l }))}
-                />
-              </div>
+              {anime?.languages_available && anime.languages_available.length > 0 && (
+                <div>
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold mb-1.5">
+                    Langue
+                  </p>
+                  <ToggleGroup2
+                    size="sm"
+                    value={lang}
+                    onChange={(v) => setLanguage(v as Language)}
+                    options={anime.languages_available.map((l) => ({ value: l, label: l }))}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -116,54 +151,38 @@ export default function Watch() {
             </div>
           </div>
 
-          {/* Episode info */}
-          <div className="px-4 md:px-0 mt-6">
-            <Link to={`/anime/${anime.id}`} className="font-display font-bold text-xl text-foreground hover:text-primary transition-colors">
-              {anime.title}
-            </Link>
-            <p className="text-sm text-muted-foreground font-body mt-1">
-              Saison {episode.season_number} — Épisode {episode.episode_number} — {lang}
-            </p>
-            {episode.title && (
-              <h2 className="font-display font-semibold text-base mt-1.5">
-                {episode.title}
-              </h2>
-            )}
-
+          <div className="px-4 md:px-0 mt-6 flex items-start gap-4">
+            <div className="flex-1 min-w-0">
+              <h1 className="font-display font-extrabold text-xl md:text-2xl">
+                {anime?.title ?? "Anime"}
+              </h1>
+              <p className="text-muted-foreground font-body mt-1">
+                Saison {episode.season_number} — Épisode {episode.episode_number}
+                {episode.title ? ` : ${episode.title}` : ""}
+              </p>
+            </div>
             <button
-              onClick={() => setLiked((v) => !v)}
-              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-surface border border-border font-body font-semibold text-sm hover:border-primary/40 transition-colors"
+              onClick={() => setLiked(!liked)}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold hover:border-primary/40 transition-colors"
             >
-              <motion.span
-                key={String(liked)}
-                initial={{ scale: 0.6 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 400, damping: 14 }}
-                className="inline-flex"
-              >
-                <Heart className={`w-4 h-4 ${liked ? "fill-primary text-primary" : ""}`} />
-              </motion.span>
+              <Heart className={`w-4 h-4 ${liked ? "fill-primary text-primary" : ""}`} />
               {episode.likes_count + (liked ? 1 : 0)}
             </button>
           </div>
 
-          <CommentSection episodeId={episode.id} />
+          <div className="px-4 md:px-0 mt-8">
+            <CommentSection episodeId={episode.id} />
+          </div>
         </div>
 
-        {/* Sidebar episodes */}
-        <aside className="px-4 md:px-0">
-          <div className="lg:sticky lg:top-20 bg-surface lg:bg-transparent rounded-2xl lg:rounded-none p-3 lg:p-0">
-            <h3 className="font-display font-bold text-base mb-3 px-1">
-              Épisodes — Saison {episode.season_number}
+        <aside className="hidden lg:block">
+          <div className="sticky top-20">
+            <h3 className="font-display font-bold text-sm mb-3">
+              Épisodes — S{episode.season_number}
             </h3>
-            <div className="lg:max-h-[calc(100vh-160px)] lg:overflow-y-auto pr-1 space-y-1">
-              {episodes.map((ep) => (
-                <EpisodeCard
-                  key={ep.id}
-                  episode={ep}
-                  compact
-                  active={ep.id === episode.id}
-                />
+            <div className="space-y-2 max-h-[calc(100vh-6rem)] overflow-y-auto pr-1">
+              {episodes.map((ep, i) => (
+                <EpisodeCard key={ep.id} episode={ep} anime={anime ?? undefined} index={i} compact />
               ))}
             </div>
           </div>
