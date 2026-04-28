@@ -17,7 +17,7 @@ def _csv_to_int_list(raw: str) -> List[int]:
 
 class _Settings:
     # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./animecey.db")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://neondb_owner:npg_PA2ZHWcl7SUe@ep-sweet-water-anqfx5fa.c-6.us-east-1.aws.neon.tech/neondb?ssl=require")
 
     # JWT
     SECRET_KEY: str = os.getenv(
@@ -64,7 +64,7 @@ class _Settings:
     CORS_ORIGINS: List[str] = [
         o.strip()
         for o in os.getenv(
-            "CORS_ORIGINS", "http://localhost:5173,https://animecey.vercel.app,https://modern-anteater-vianney-98712cbe.koyeb.app"
+            "CORS_ORIGINS", "http://localhost:5173,https://animecey.vercel.app"
         ).split(",")
         if o.strip()
     ]
