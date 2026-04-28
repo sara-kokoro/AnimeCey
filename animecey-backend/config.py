@@ -69,8 +69,8 @@ class _Settings:
         if o.strip()
     ]
 
-    # Debug
-    DEBUG: bool = os.getenv("DEBUG", "true").lower() in ("true", "1", "yes")
+    # Debug — false by default in production
+    DEBUG: bool = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")
 
 
 settings = _Settings()
