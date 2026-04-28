@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,7 +11,9 @@ from auth import get_client_ip, get_current_user, get_current_user_optional
 from database import get_db
 from models import Episode, EpisodeLike, User
 from schemas import EpisodePublic, LikeResponse, StreamResponse
-from services import byse, telegram_stream
+from services import byse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -42,10 +47,10 @@ async def get_episode(episode_id: int, db: AsyncSession = Depends(get_db)):
     return EpisodePublic.model_validate(ep)
 
 
-@router.get("/{episode_id}/stream", response_model=StreamResponse)
+@router.get("/{episode_id}/stream")
 async def stream(
     episode_id: int,
-    server: str = Query(..., regex="^servcey[12]$"),
+    server: str = Query(..., pattern="^servcey[12]$"),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Episode).where(Episode.id == episode_id))
@@ -55,14 +60,38 @@ async def stream(
 
     if server == "servcey1":
         if not ep.servcey1_available or not ep.servcey1_file_id:
-            raise HTTPException(status_code=404, detail="Serveur non disponible pour cet épisode")
-        url = await telegram_stream.get_stream_url(ep.servcey1_file_id)
+            raise HTTPException(status_code=404, detail="ServCey 1 non disponible pour cet épisode")
+
+        # Stream via Pyrogram (MTProto) — no 20MB Bot API limit
+        try:
+            from bot.client import bot
+        except ImportError:
+            raise HTTPException(status_code=503, detail="Bot Telegram non disponible")
+
+        if not bot.is_connected:
+            raise HTTPException(status_code=503, detail="Bot Telegram non connecté")
+
+        file_id = ep.servcey1_file_id
+
+        async def pyrogram_stream():
+            """Stream file chunks from Telegram via Pyrogram."""
+            async for chunk in bot.stream_media(file_id):
+                yield chunk
+
+        return StreamingResponse(
+            pyrogram_stream(),
+            media_type="video/mp4",
+            headers={
+                "Content-Disposition": "inline",
+                "Accept-Ranges": "bytes",
+            },
+        )
+
     else:
         if not ep.servcey2_available or not ep.servcey2_file_code:
-            raise HTTPException(status_code=404, detail="Serveur non disponible pour cet épisode")
+            raise HTTPException(status_code=404, detail="ServCey 2 non disponible pour cet épisode")
         url = await byse.get_embed_url(ep.servcey2_file_code)
-
-    return StreamResponse(url=url)
+        return StreamResponse(url=url)
 
 
 @router.post("/{episode_id}/like", response_model=LikeResponse)

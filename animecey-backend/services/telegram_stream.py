@@ -1,26 +1,22 @@
-"""Generate streaming URLs from Telegram file IDs.
+"""Generate streaming responses from Telegram file IDs via Pyrogram (MTProto).
 
-Uses the Telegram Bot API ``getFile`` method to resolve a ``file_id``
-to a temporary download URL.  The returned URL is served to the frontend
-as ``servcey1`` — the word "Telegram" never appears in public API output.
+Uses Pyrogram to stream files of any size (no 20MB Bot API limit).
+The frontend hits ``/api/episodes/{id}/stream?server=servcey1`` which
+returns a redirect or a streaming response.
 """
 
 from __future__ import annotations
 
-import httpx
+import logging
 
-from config import settings
+logger = logging.getLogger(__name__)
 
 
 async def get_stream_url(file_id: str) -> str:
-    """Return a direct-download URL for a Telegram *file_id*."""
-    token = settings.TELEGRAM_BOT_TOKEN
-    api_url = f"https://api.telegram.org/bot{token}/getFile"
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(api_url, params={"file_id": file_id})
-        resp.raise_for_status()
-        data = resp.json()
-    if not data.get("ok"):
-        raise RuntimeError(data.get("description", "Telegram getFile failed"))
-    file_path = data["result"]["file_path"]
-    return f"https://api.telegram.org/file/bot{token}/{file_path}"
+    """Return an internal streaming URL that the episodes router will handle.
+
+    Instead of calling the Bot API getFile (limited to 20MB), we return
+    a sentinel URL that tells the stream endpoint to use Pyrogram streaming.
+    """
+    # Return a marker that episodes.py will intercept to use Pyrogram streaming
+    return f"pyrogram://{file_id}"

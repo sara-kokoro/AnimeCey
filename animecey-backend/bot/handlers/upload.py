@@ -47,73 +47,49 @@ async def _upload_to_byse_background(
 ):
     """
     Télécharge le fichier via Pyrogram (MTProto) puis l'envoie à byse.sx.
-    Fonctionne pour les fichiers > 20MB contrairement à getFile Bot API.
+    100% Pyrogram — aucun appel Bot API getFile (pas de limite 20MB).
     Met à jour l'épisode en DB quand c'est terminé.
     """
     try:
-        # 1. Télécharger depuis Telegram via Pyrogram (MTProto, pas de limite 20MB)
-        file_path = await client.download_media(file_id, in_memory=True)
-        
-        # 2. Re-uploader dans un channel pour obtenir une URL publique
-        #    On utilise le channel configuré comme stockage
-        sent = await client.send_video(
-            settings.TELEGRAM_CHANNEL_ID,
-            file_path,
-            caption=f"AnimeCey | {file_name}",
-        )
-        
-        # 3. Récupérer l'URL via le bot token (fichier maintenant dans le channel)
-        media = sent.video or sent.document
-        if not media:
-            raise RuntimeError("Impossible d'obtenir le média après renvoi")
-        
-        import httpx
-        async with httpx.AsyncClient(timeout=30) as http:
-            resp = await http.get(
-                f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/getFile",
-                params={"file_id": media.file_id},
-            )
-            data = resp.json()
-        
-        if not data.get("ok"):
-            raise RuntimeError(f"getFile failed: {data.get('description')}")
-        
-        download_url = f"https://api.telegram.org/file/bot{settings.TELEGRAM_BOT_TOKEN}/{data['result']['file_path']}"
-        
-        # 4. Remote upload vers byse.sx
-        result = await byse.remote_upload(download_url, file_name)
+        # 1. Télécharger depuis Telegram via Pyrogram (MTProto, pas de limite)
+        buf = await client.download_media(file_id, in_memory=True)
+        if buf is None:
+            raise RuntimeError("Pyrogram download_media a retourné None")
+
+        file_bytes = buf.getvalue() if hasattr(buf, "getvalue") else bytes(buf)
+
+        # 2. Upload direct vers byse.sx (pas de remote URL, pas de Bot API)
+        result = await byse.direct_upload(file_bytes, file_name)
         byse_file_code = result.get("filecode")
-        
+
         if not byse_file_code:
-            raise RuntimeError("Pas de filecode retourné par byse.sx")
-        
-        # 5. Attendre que byse.sx finisse (en background, pas de blocage pour l'admin)
-        status = await byse.wait_for_upload(byse_file_code, poll_interval=10, max_wait=600)
-        st = str(status.get("status", "")).upper()
-        byse_ok = st in ("COMPLETED", "OK", "")
-        
-        # 6. Mettre à jour l'épisode en DB
+            raise RuntimeError(f"Pas de filecode retourné par byse.sx: {result}")
+
+        # 3. Mettre à jour l'épisode en DB
         async with async_session() as db:
             ep_result = await db.execute(select(Episode).where(Episode.id == episode_id))
             ep = ep_result.scalar_one_or_none()
             if ep:
                 ep.servcey2_file_code = byse_file_code
-                ep.servcey2_available = byse_ok
+                ep.servcey2_available = True
                 await db.commit()
-        
-        # 7. Notifier l'admin
-        status_text = "disponible ✓" if byse_ok else f"échec ({status.get('error_msg', 'inconnu')})"
+
+        # 4. Notifier l'admin
         await client.send_message(
             chat_id,
-            f"ServCey 2 — Épisode {ep_number} : {status_text}"
+            f"ServCey 2 — Épisode {ep_number} : disponible ✓\n"
+            f"Code: {byse_file_code}"
         )
 
     except Exception as exc:
         logger.exception("Erreur background byse.sx pour ep %s", ep_number)
-        await client.send_message(
-            chat_id,
-            f"ServCey 2 — Épisode {ep_number} : erreur ({exc})"
-        )
+        try:
+            await client.send_message(
+                chat_id,
+                f"ServCey 2 — Épisode {ep_number} : erreur ({exc})"
+            )
+        except Exception:
+            pass
 
 
 def register(bot: Client):

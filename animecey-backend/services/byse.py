@@ -48,6 +48,39 @@ async def remote_upload(url: str, title: str | None = None) -> dict:
     return data.get("result", data)
 
 
+async def direct_upload(file_data: bytes, file_name: str) -> dict:
+    """Upload a file directly to byse.sx (no URL needed).
+
+    1. Get an upload server URL
+    2. POST the file as multipart/form-data
+    Returns dict with ``filecode`` on success.
+    """
+    # Step 1: get upload server
+    server_data = await _get("upload/server")
+    upload_url = server_data.get("result")
+    if not upload_url:
+        raise RuntimeError(f"Impossible d'obtenir le serveur d'upload byse.sx: {server_data}")
+
+    # Step 2: upload file
+    async with httpx.AsyncClient(timeout=300) as client:
+        resp = await client.post(
+            upload_url,
+            data={"key": settings.BYSE_API_KEY},
+            files={"file": (file_name, file_data, "video/mp4")},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    if data.get("msg") == "Wrong Auth":
+        raise RuntimeError("Clé API byse.sx invalide")
+
+    # The response structure may vary; extract filecode
+    result = data.get("result", data)
+    if isinstance(result, list) and result:
+        return result[0]
+    return result
+
+
 async def check_upload_status(file_code: str) -> dict:
     """Return progress / status of a remote upload job."""
     data = await _get("remote/status", {"file_code": file_code})
