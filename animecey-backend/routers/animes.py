@@ -29,7 +29,7 @@ async def _enrich_animes(db: AsyncSession, animes: list[Anime]) -> list[dict]:
     ids = [a.id for a in animes]
 
     lang_q = await db.execute(
-        select(Episode.anime_id, func.group_concat(distinct(Episode.language)))
+        select(Episode.anime_id, func.string_agg(distinct(Episode.language), ','))
         .where(Episode.anime_id.in_(ids))
         .group_by(Episode.anime_id)
     )
