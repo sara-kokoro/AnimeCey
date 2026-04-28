@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import case, distinct, func, select
+from sqlalchemy import String, case, cast, distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -29,13 +29,19 @@ async def _enrich_animes(db: AsyncSession, animes: list[Anime]) -> list[dict]:
     ids = [a.id for a in animes]
 
     lang_q = await db.execute(
-        select(Episode.anime_id, func.string_agg(distinct(Episode.language), ','))
+        select(Episode.anime_id, func.array_agg(distinct(cast(Episode.language, String))))
         .where(Episode.anime_id.in_(ids))
         .group_by(Episode.anime_id)
     )
     lang_map: dict[int, list[str]] = {}
     for row in lang_q.all():
-        lang_map[row[0]] = [l.strip() for l in (row[1] or "").split(",") if l.strip()]
+        raw = row[1]
+        if isinstance(raw, list):
+            lang_map[row[0]] = [str(v) for v in raw if v]
+        elif isinstance(raw, str):
+            lang_map[row[0]] = [l.strip() for l in raw.split(",") if l.strip()]
+        else:
+            lang_map[row[0]] = []
 
     season_q = await db.execute(
         select(Episode.anime_id, func.count(distinct(Episode.season_number)))
@@ -84,7 +90,7 @@ async def list_animes(
     if status:
         query = query.where(Anime.status == status)
     if genre:
-        query = query.where(Anime.genres.ilike(f'%"{genre}"%'))
+        query = query.where(cast(Anime.genres, String).ilike(f'%"{genre}"%'))
     if year:
         query = query.where(Anime.year == year)
 

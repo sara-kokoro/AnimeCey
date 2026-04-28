@@ -19,7 +19,7 @@ from bot.utils.keyboards import (
 from config import settings
 from database import async_session
 from models import BotSession, Episode, Folder, FolderType
-from services import byse, telegram_stream
+from services import byse
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,85 @@ async def _get_or_create_session(db, telegram_user_id: int) -> BotSession:
         await db.commit()
         await db.refresh(session)
     return session
+
+
+async def _upload_to_byse_background(
+    client: Client,
+    episode_id: int,
+    file_id: str,
+    file_name: str,
+    ep_number: int,
+    chat_id: int,
+):
+    """
+    Télécharge le fichier via Pyrogram (MTProto) puis l'envoie à byse.sx.
+    Fonctionne pour les fichiers > 20MB contrairement à getFile Bot API.
+    Met à jour l'épisode en DB quand c'est terminé.
+    """
+    try:
+        # 1. Télécharger depuis Telegram via Pyrogram (MTProto, pas de limite 20MB)
+        file_path = await client.download_media(file_id, in_memory=True)
+        
+        # 2. Re-uploader dans un channel pour obtenir une URL publique
+        #    On utilise le channel configuré comme stockage
+        sent = await client.send_video(
+            settings.TELEGRAM_CHANNEL_ID,
+            file_path,
+            caption=f"AnimeCey | {file_name}",
+        )
+        
+        # 3. Récupérer l'URL via le bot token (fichier maintenant dans le channel)
+        media = sent.video or sent.document
+        if not media:
+            raise RuntimeError("Impossible d'obtenir le média après renvoi")
+        
+        import httpx
+        async with httpx.AsyncClient(timeout=30) as http:
+            resp = await http.get(
+                f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/getFile",
+                params={"file_id": media.file_id},
+            )
+            data = resp.json()
+        
+        if not data.get("ok"):
+            raise RuntimeError(f"getFile failed: {data.get('description')}")
+        
+        download_url = f"https://api.telegram.org/file/bot{settings.TELEGRAM_BOT_TOKEN}/{data['result']['file_path']}"
+        
+        # 4. Remote upload vers byse.sx
+        result = await byse.remote_upload(download_url, file_name)
+        byse_file_code = result.get("filecode")
+        
+        if not byse_file_code:
+            raise RuntimeError("Pas de filecode retourné par byse.sx")
+        
+        # 5. Attendre que byse.sx finisse (en background, pas de blocage pour l'admin)
+        status = await byse.wait_for_upload(byse_file_code, poll_interval=10, max_wait=600)
+        st = str(status.get("status", "")).upper()
+        byse_ok = st in ("COMPLETED", "OK", "")
+        
+        # 6. Mettre à jour l'épisode en DB
+        async with async_session() as db:
+            ep_result = await db.execute(select(Episode).where(Episode.id == episode_id))
+            ep = ep_result.scalar_one_or_none()
+            if ep:
+                ep.servcey2_file_code = byse_file_code
+                ep.servcey2_available = byse_ok
+                await db.commit()
+        
+        # 7. Notifier l'admin
+        status_text = "disponible ✓" if byse_ok else f"échec ({status.get('error_msg', 'inconnu')})"
+        await client.send_message(
+            chat_id,
+            f"ServCey 2 — Épisode {ep_number} : {status_text}"
+        )
+
+    except Exception as exc:
+        logger.exception("Erreur background byse.sx pour ep %s", ep_number)
+        await client.send_message(
+            chat_id,
+            f"ServCey 2 — Épisode {ep_number} : erreur ({exc})"
+        )
 
 
 def register(bot: Client):
@@ -136,8 +215,8 @@ def register(bot: Client):
                     "Quel est le numéro de cet épisode ?"
                 )
 
-            folder = await db.execute(select(Folder).where(Folder.id == session.selected_folder_id))
-            f = folder.scalar_one_or_none()
+            folder_result = await db.execute(select(Folder).where(Folder.id == session.selected_folder_id))
+            f = folder_result.scalar_one_or_none()
             if not f:
                 return await message.reply("Erreur : dossier introuvable.")
 
@@ -185,81 +264,36 @@ async def _process_upload(
     file_name: str,
     ep_number: int,
 ):
-    progress_msg = await message.reply(
-        f"Épisode {ep_number} reçu. Upload en cours vers ServCey 2..."
-    )
-
-    byse_file_code = None
-    byse_ok = False
-
-    try:
-        token = settings.TELEGRAM_BOT_TOKEN
-        tg_url = f"https://api.telegram.org/bot{token}/getFile"
-        import httpx
-        async with httpx.AsyncClient(timeout=15) as http:
-            resp = await http.get(tg_url, params={"file_id": file_id})
-            data = resp.json()
-        if data.get("ok"):
-            file_path = data["result"]["file_path"]
-            download_url = f"https://api.telegram.org/file/bot{token}/{file_path}"
-            result = await byse.remote_upload(download_url, file_name)
-            byse_file_code = result.get("filecode")
-            if byse_file_code:
-                await progress_msg.edit_text(
-                    f"Épisode {ep_number} — ServCey 2 : en cours..."
-                )
-                status = await byse.wait_for_upload(byse_file_code, poll_interval=5, max_wait=300)
-                st = str(status.get("status", "")).upper()
-                if st in ("COMPLETED", "OK", ""):
-                    byse_ok = True
-                    await progress_msg.edit_text(
-                        f"Épisode {ep_number} — ServCey 2 : terminé."
-                    )
-                else:
-                    await progress_msg.edit_text(
-                        f"Épisode {ep_number} — ServCey 2 : échec ({status.get('error_msg', 'inconnu')})"
-                    )
-    except Exception as exc:
-        logger.exception("Erreur upload byse.sx pour ep %s", ep_number)
-        await progress_msg.edit_text(
-            f"Épisode {ep_number} — ServCey 2 : erreur ({exc})"
-        )
-
-    anime_id = folder.anime_id
+    # Sauvegarder IMMÉDIATEMENT avec ServCey1 — pas d'attente byse.sx
     episode = Episode(
-        anime_id=anime_id,
+        anime_id=folder.anime_id,
         folder_id=folder.id,
         episode_number=ep_number,
         language=session.selected_language,
         season_number=session.selected_season or 1,
         servcey1_file_id=file_id,
         servcey1_available=True,
-        servcey2_file_code=byse_file_code,
-        servcey2_available=byse_ok,
+        servcey2_file_code=None,
+        servcey2_available=False,
     )
     db.add(episode)
     await db.commit()
+    await db.refresh(episode)
 
-    parent_path = ""
-    if folder.parent_id:
-        parent = await db.execute(select(Folder).where(Folder.id == folder.parent_id))
-        p = parent.scalar_one_or_none()
-        if p and p.parent_id:
-            gp = await db.execute(select(Folder).where(Folder.id == p.parent_id))
-            grandparent = gp.scalar_one_or_none()
-            if grandparent:
-                parent_path = f"{grandparent.name} › {p.name} › "
-            else:
-                parent_path = f"{p.name} › "
-        elif p:
-            parent_path = f"{p.name} › "
-
-    s1_status = "disponible" if True else "indisponible"
-    s2_status = "disponible" if byse_ok else "indisponible"
     await message.reply(
-        f"✓ Épisode {ep_number} ajouté avec succès\n"
-        f"  Dossier : {parent_path}{folder.name}\n"
-        f"  ServCey 1 : {s1_status}\n"
-        f"  ServCey 2 : {s2_status}\n\n"
+        f"✓ Épisode {ep_number} ajouté — ServCey 1 disponible immédiatement.\n"
+        f"ServCey 2 upload en arrière-plan (notification quand terminé).\n\n"
         f"Envoie le prochain fichier ou /cancel pour terminer."
+    )
+
+    # Lancer byse.sx en background sans bloquer
+    asyncio.create_task(
+        _upload_to_byse_background(
+            client,
+            episode.id,
+            file_id,
+            file_name,
+            ep_number,
+            message.chat.id,
+        )
     )
