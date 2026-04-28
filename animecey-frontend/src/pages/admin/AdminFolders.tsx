@@ -109,7 +109,7 @@ function FolderNode({ folder, depth = 0, onDelete, onAddChild }: {
 export default function AdminFolders() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
-  const [newLang, setNewLang] = useState("vostfr");
+  const [newLang, setNewLang] = useState("VOSTFR");
   const [newSeason, setNewSeason] = useState(1);
   const [pendingParent, setPendingParent] = useState<{ parentId: number; animeId?: number; type: string } | null>(null);
 
@@ -182,8 +182,8 @@ export default function AdminFolders() {
                   onChange={(e) => setNewLang(e.target.value)}
                   className="mt-1 block bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm font-body"
                 >
-                  <option value="vostfr">VOSTFR</option>
-                  <option value="vf">VF</option>
+                  <option value="VOSTFR">VOSTFR</option>
+                  <option value="VF">VF</option>
                 </select>
               </div>
             ) : (
