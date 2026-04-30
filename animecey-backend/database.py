@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -22,6 +23,10 @@ class Base(DeclarativeBase):
 async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Add new columns to existing tables (safe: IF NOT EXISTS)
+        await conn.execute(text(
+            "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS servcey1_msg_id INTEGER"
+        ))
 
 
 async def get_db():

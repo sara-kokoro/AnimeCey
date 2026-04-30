@@ -138,6 +138,7 @@ class Episode(Base):
     language: Mapped[LanguageEnum] = mapped_column(Enum(LanguageEnum), nullable=False)
     season_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     servcey1_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    servcey1_msg_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     servcey1_available: Mapped[bool] = mapped_column(Boolean, default=False)
     servcey2_file_code: Mapped[str | None] = mapped_column(String(255), nullable=True)
     servcey2_available: Mapped[bool] = mapped_column(Boolean, default=False)

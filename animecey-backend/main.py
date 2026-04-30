@@ -51,6 +51,15 @@ async def lifespan(app: FastAPI):
     await init_db()
     await _ensure_admin()
 
+    # Clean up stale Pyrogram session files (prevents auth key errors after restart)
+    import glob
+    for stale in glob.glob("*.session*"):
+        try:
+            os.remove(stale)
+            logger.info("Cleaned up stale session file: %s", stale)
+        except OSError:
+            pass
+
     bot_running = False
     if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_API_ID:
         try:

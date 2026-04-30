@@ -240,7 +240,17 @@ async def _process_upload(
     file_name: str,
     ep_number: int,
 ):
-    # Sauvegarder IMMÉDIATEMENT avec ServCey1 — pas d'attente byse.sx
+    # Forward file to storage channel for FileStream (streaming via MTProto)
+    channel_msg_id = None
+    try:
+        fwd = await message.forward(chat_id=settings.TELEGRAM_CHANNEL_ID)
+        if fwd:
+            channel_msg_id = fwd.id
+            logger.info("Forwarded ep %s to channel, msg_id=%s", ep_number, channel_msg_id)
+    except Exception as exc:
+        logger.warning("Failed to forward to channel: %s", exc)
+
+    # Save episode IMMEDIATELY with ServCey1 — don't wait for byse.sx
     episode = Episode(
         anime_id=folder.anime_id,
         folder_id=folder.id,
@@ -248,6 +258,7 @@ async def _process_upload(
         language=session.selected_language,
         season_number=session.selected_season or 1,
         servcey1_file_id=file_id,
+        servcey1_msg_id=channel_msg_id,
         servcey1_available=True,
         servcey2_file_code=None,
         servcey2_available=False,

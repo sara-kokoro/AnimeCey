@@ -15,4 +15,5 @@ bot = Client(
     api_id=settings.TELEGRAM_API_ID,
     api_hash=settings.TELEGRAM_API_HASH,
     bot_token=settings.TELEGRAM_BOT_TOKEN,
+    in_memory=True,  # No session file — avoids stale auth key issues on Koyeb restart
 )
