@@ -85,8 +85,8 @@ async def get_episode(episode_id: int, db: AsyncSession = Depends(get_db)):
 @router.get("/{episode_id}/stream")
 async def stream(
     episode_id: int,
-    server: str = Query(..., pattern="^servcey[12]$"),
     request: Request,
+    server: str = Query(..., pattern="^servcey[12]$"),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Episode).where(Episode.id == episode_id))
