@@ -27,6 +27,16 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS servcey1_msg_id INTEGER"
         ))
+        # TMCooper : lien de lecture résolu + date du dernier rafraîchissement
+        await conn.execute(text(
+            "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS stream_url TEXT"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS stream_type VARCHAR(10)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS links_refreshed_at TIMESTAMPTZ"
+        ))
 
 
 async def get_db():

@@ -57,17 +57,28 @@ class _Settings:
     VAPID_PUBLIC_KEY: str = os.getenv("VAPID_PUBLIC_KEY", "BI2pC9_yPeTU11_q-Cw-FNpxt2sXxGaTDHkAfqLhWuWVyweOrAlySohMPN492MlyI-3L41hp8W1w0Lgw3AHcNOI")
     VAPID_PRIVATE_KEY: str = os.getenv("VAPID_PRIVATE_KEY", "5snml5V9vp7jJNCC7oUivHz4mnA3G2PFphwla4LmEsw")
     VAPID_CLAIMS_EMAIL: str = os.getenv(
-        "VAPID_CLAIMS_EMAIL", "admin@animecey.vercel.app"
+        "VAPID_CLAIMS_EMAIL", "admin@jessicanime.vercel.app"
     )
 
     # CORS
     CORS_ORIGINS: List[str] = [
         o.strip()
         for o in os.getenv(
-            "CORS_ORIGINS", "http://localhost:5173,https://animecey.vercel.app"
+            "CORS_ORIGINS", "http://localhost:5173,https://jessicanime.vercel.app,https://animecey.vercel.app"
         ).split(",")
         if o.strip()
     ]
+
+    # TMCooper (AnimeSamaApi) — instance Flask déployée à part (ex. Koyeb)
+    TMCOOPER_API_URL: str = os.getenv("TMCOOPER_API_URL", "http://127.0.0.1:5000").rstrip("/")
+    TMCOOPER_TIMEOUT: float = float(os.getenv("TMCOOPER_TIMEOUT", "600"))
+    TMCOOPER_SYNC_ENABLED: bool = os.getenv("TMCOOPER_SYNC_ENABLED", "true").lower() in ("true", "1", "yes")
+    TMCOOPER_SYNC_INTERVAL_MIN: int = max(1, int(os.getenv("TMCOOPER_SYNC_INTERVAL_MIN", "30")))
+    # Pause entre deux animés pendant la synchro (évite le blocage Cloudflare côté source)
+    TMCOOPER_SYNC_DELAY_SEC: float = float(os.getenv("TMCOOPER_SYNC_DELAY_SEC", "1.5"))
+
+    # Ancien système d'upload Telegram (désactivé par défaut)
+    ENABLE_TELEGRAM_BOT: bool = os.getenv("ENABLE_TELEGRAM_BOT", "false").lower() in ("true", "1", "yes")
 
     # Debug — false by default in production
     DEBUG: bool = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")

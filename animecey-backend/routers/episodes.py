@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -86,27 +87,45 @@ async def get_episode(episode_id: int, db: AsyncSession = Depends(get_db)):
 async def stream(
     episode_id: int,
     request: Request,
-    server: str = Query(..., pattern="^servcey[12]$"),
+    server: Optional[str] = Query(None, pattern="^(servcey[12]|tmcooper)$"),
     db: AsyncSession = Depends(get_db),
 ):
+    """Renvoie l'URL de lecture.
+
+    - server=tmcooper (ou absent) : lien M3U8/MP4 résolu par TMCooper, rafraîchi
+      toutes les 30 min par la synchro ;
+    - server=servcey1/2 : anciens serveurs (Telegram / Byse) s'ils sont dispo ;
+      sinon on retombe sur le lien TMCooper de l'épisode s'il existe, pour que
+      un front qui demande encore servcey1 continue de fonctionner.
+    """
     result = await db.execute(select(Episode).where(Episode.id == episode_id))
     ep = result.scalar_one_or_none()
     if not ep:
         raise HTTPException(status_code=404, detail="Épisode introuvable")
 
-    if server == "servcey1":
-        if not ep.servcey1_available or not ep.servcey1_file_id:
-            raise HTTPException(status_code=404, detail="ServCey 1 non disponible pour cet épisode")
+    def _tmcooper_response() -> StreamResponse:
+        return StreamResponse(url=ep.stream_url, type=ep.stream_type)
 
+    if server == "tmcooper":
+        if not ep.stream_url:
+            raise HTTPException(status_code=404, detail="Aucun lien TMCooper pour cet épisode")
+        return _tmcooper_response()
+
+    if server is None and ep.stream_url:
+        return _tmcooper_response()
+
+    if server in (None, "servcey1") and ep.servcey1_available and ep.servcey1_file_id:
         base = str(request.base_url).rstrip("/")
-        player_url = f"{base}/api/episodes/{episode_id}/player"
-        return StreamResponse(url=player_url)
+        return StreamResponse(url=f"{base}/api/episodes/{episode_id}/player")
 
-    else:
-        if not ep.servcey2_available or not ep.servcey2_file_code:
-            raise HTTPException(status_code=404, detail="ServCey 2 non disponible pour cet épisode")
+    if server in (None, "servcey2") and ep.servcey2_available and ep.servcey2_file_code:
         url = await byse.get_embed_url(ep.servcey2_file_code)
         return StreamResponse(url=url)
+
+    if ep.stream_url:
+        return _tmcooper_response()
+
+    raise HTTPException(status_code=404, detail="Aucune source de lecture disponible pour cet épisode")
 
 
 @router.get("/{episode_id}/player")

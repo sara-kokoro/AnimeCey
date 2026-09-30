@@ -142,6 +142,10 @@ class Episode(Base):
     servcey1_available: Mapped[bool] = mapped_column(Boolean, default=False)
     servcey2_file_code: Mapped[str | None] = mapped_column(String(255), nullable=True)
     servcey2_available: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Lien de lecture résolu via TMCooper (rafraîchi régulièrement, il expire)
+    stream_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stream_type: Mapped[str | None] = mapped_column(String(10), nullable=True)  # mp4 | m3u8 | embed
+    links_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     likes_count: Mapped[int] = mapped_column(Integer, default=0)
     comments_count: Mapped[int] = mapped_column(Integer, default=0)
     air_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -149,6 +153,10 @@ class Episode(Base):
 
     anime: Mapped["Anime"] = relationship(back_populates="episodes")
     folder: Mapped["Folder"] = relationship(back_populates="episodes")
+
+    @property
+    def stream_available(self) -> bool:
+        return bool(self.stream_url)
 
 
 class User(Base):
@@ -276,6 +284,26 @@ class PushSubscription(Base):
     endpoint: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     p256dh: Mapped[str] = mapped_column(Text, nullable=False)
     auth: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class TmcooperSource(Base):
+    """Un (animé, saison, version) à synchroniser depuis l'API TMCooper."""
+
+    __tablename__ = "tmcooper_sources"
+    __table_args__ = (
+        UniqueConstraint("anime_id", "season", "version", name="uq_tmcooper_source"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    anime_id: Mapped[int] = mapped_column(Integer, ForeignKey("animes.id", ondelete="CASCADE"), nullable=False)
+    api_name: Mapped[str] = mapped_column(String(255), nullable=False)  # paramètre n= de l'API
+    season: Mapped[str] = mapped_column(String(50), nullable=False, default="saison1")
+    version: Mapped[str] = mapped_column(String(10), nullable=False, default="vostfr")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_status: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    last_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 

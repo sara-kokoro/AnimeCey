@@ -168,6 +168,8 @@ class EpisodePublic(BaseModel):
     season_number: int
     servcey1_available: bool = False
     servcey2_available: bool = False
+    stream_available: bool = False
+    stream_type: Optional[str] = None
     likes_count: int = 0
     comments_count: int = 0
     air_date: Optional[datetime] = None
@@ -212,6 +214,7 @@ class EpisodeUpdate(BaseModel):
 
 class StreamResponse(BaseModel):
     url: str
+    type: Optional[str] = None  # mp4 | m3u8 | embed (liens TMCooper)
 
 
 # ── Comments ───────────────────────────────────────────────────────────

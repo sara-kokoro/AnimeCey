@@ -51,17 +51,17 @@ async def lifespan(app: FastAPI):
     await init_db()
     await _ensure_admin()
 
-    # Clean up stale Pyrogram session files (prevents auth key errors after restart)
-    import glob
-    for stale in glob.glob("*.session*"):
-        try:
-            os.remove(stale)
-            logger.info("Cleaned up stale session file: %s", stale)
-        except OSError:
-            pass
-
     bot_running = False
-    if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_API_ID:
+    if settings.ENABLE_TELEGRAM_BOT and settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_API_ID:
+        # Clean up stale Pyrogram session files (prevents auth key errors after restart)
+        import glob
+        for stale in glob.glob("*.session*"):
+            try:
+                os.remove(stale)
+                logger.info("Cleaned up stale session file: %s", stale)
+            except OSError:
+                pass
+
         try:
             from bot.client import bot
             from bot.handlers import register_all
@@ -75,9 +75,15 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("Telegram bot failed to start: %s. API will run without bot.", exc)
     else:
-        logger.info("Telegram credentials not configured. Bot disabled.")
+        logger.info("Telegram bot disabled (ENABLE_TELEGRAM_BOT=false).")
+
+    # Synchronisation périodique des liens TMCooper
+    from services import tmcooper_sync
+    tmcooper_sync.start_loop()
 
     yield
+
+    await tmcooper_sync.stop_loop()
 
     if bot_running:
         logger.info("Stopping Telegram bot...")
@@ -103,7 +109,7 @@ app.add_middleware(
 
 # ── Routers ────────────────────────────────────────────────────────────
 
-from routers import admin, anilist, animes, auth, comments, episodes, folders, notifications, push, search, tmdb, users  # noqa: E402
+from routers import admin, anilist, animes, auth, comments, episodes, folders, notifications, push, search, tmcooper, tmdb, users  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(animes.router, prefix="/api/animes", tags=["Animes"])
@@ -115,6 +121,7 @@ app.include_router(push.router, prefix="/api/push", tags=["Push"])
 app.include_router(search.router, prefix="/api/search", tags=["Search"])
 app.include_router(folders.router, prefix="/api/admin/folders", tags=["Admin - Folders"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(tmcooper.router, prefix="/api/admin/tmcooper", tags=["Admin - TMCooper"])
 app.include_router(tmdb.router, prefix="/api/tmdb", tags=["TMDB"])
 app.include_router(anilist.router, prefix="/api/anilist", tags=["AniList"])
 
