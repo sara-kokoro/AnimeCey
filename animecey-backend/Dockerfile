@@ -20,8 +20,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
+# Robuste si le zip a perdu le bit exécutable ou ajouté des fins de ligne Windows (CRLF)
+RUN sed -i 's/\r$//' start.sh && chmod +x start.sh
 
 ENV TMCOOPER_API_URL=http://127.0.0.1:5000
 
 EXPOSE 8000
-CMD ["./start.sh"]
+CMD ["sh", "start.sh"]
