@@ -8,7 +8,7 @@ ANIMESAMA_DIR="${ANIMESAMA_DIR:-/opt/AnimeSamaApi}"
   cd "$ANIMESAMA_DIR" || exit 1
   # Relance l'API si elle plante, sans jamais bloquer le backend.
   while true; do
-    python main.py
+    python /app/animesama_launcher.py
     echo "[start.sh] AnimeSamaApi s'est arrêtée (code $?), relance dans 5 s..." >&2
     sleep 5
   done

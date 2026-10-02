@@ -1,23 +1,26 @@
 """Import automatique du catalogue TMCooper dans catalog_titles.
 
-Fonctionnement :
-  * au démarrage de l'API (après ~20 s), un premier import complet est lancé ;
-  * ensuite, un nouveau cycle toutes les CATALOG_SYNC_INTERVAL_MIN minutes
-    (30 par défaut) : les titres existants sont mis à jour, les nouveautés
-    sont ajoutées ;
-  * la recherche (routers/catalog.py) ne lit que la base de données.
+Comment TMCooper fonctionne (vu dans son code) :
+  * /api/getSerchAnime cherche dans un fichier local (AnimeInfo.json) et renvoie
+    [] tant que ce fichier n'existe pas ;
+  * ce fichier est créé par /api/getAllAnime (3 à 5 min) ;
+  * /api/loadBaseAnimeData renvoie TOUT le catalogue d'un coup :
+    [{"title", "link", "cover"}, ...].
 
-Garde-fous :
-  * si l'API TMCooper est injoignable ou ne renvoie rien, la base n'est pas
-    touchée (aucune suppression, jamais) ;
-  * si le catalogue TMCooper est en cours d'indexation (getAllAnime), on
-    réessaie au bout de 5 minutes au lieu d'attendre le cycle complet ;
-  * un seul import à la fois (verrou).
+Ce module :
+  1. vérifie que TMCooper connaît le domaine Anime-Sama ;
+  2. lit le catalogue complet (lance getAllAnime si le fichier n'existe pas) ;
+  3. l'enregistre en base (ajoute les nouveautés, met à jour le reste) ;
+  4. recommence toutes les CATALOG_SYNC_INTERVAL_MIN minutes (30 par défaut) ;
+  5. relance un scraping complet toutes les CATALOG_RESCRAPE_HOURS heures
+     (6 par défaut) pour que les vraies nouveautés d'Anime-Sama arrivent.
+
+Jamais de suppression en base : en cas de panne côté TMCooper, rien ne bouge.
 
 Variables d'environnement (toutes optionnelles) :
-  CATALOG_SYNC_ENABLED       true / false          (défaut : true)
-  CATALOG_SYNC_INTERVAL_MIN  minutes entre 2 cycles (défaut : 30)
-  CATALOG_SEED_LIMIT         résultats demandés par recherche (défaut : 50)
+  CATALOG_SYNC_ENABLED        true / false            (défaut : true)
+  CATALOG_SYNC_INTERVAL_MIN   minutes entre 2 cycles   (défaut : 30)
+  CATALOG_RESCRAPE_HOURS      heures entre 2 scrapings complets, 0 = jamais (défaut : 6)
 
 Mettre ce fichier dans services/catalog_sync.py.
 """
@@ -27,13 +30,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import string
+import time
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
+import httpx
 from sqlalchemy import func, literal_column, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from config import settings
 from database import async_session, engine
 from models_catalog import CatalogTitle
 from services import tmcooper
@@ -43,66 +47,78 @@ logger = logging.getLogger(__name__)
 SOURCE = "tmcooper"
 ENABLED = os.getenv("CATALOG_SYNC_ENABLED", "true").lower() in ("true", "1", "yes")
 INTERVAL_MIN = max(1, int(os.getenv("CATALOG_SYNC_INTERVAL_MIN", "30")))
-SEED_LIMIT = max(1, int(os.getenv("CATALOG_SEED_LIMIT", "50")))
-RETRY_NOT_READY_SEC = 300
+RESCRAPE_HOURS = max(0.0, float(os.getenv("CATALOG_RESCRAPE_HOURS", "6")))
+RETRY_SEC = 300
+INDEX_TIMEOUT = 1800.0
 BATCH = 200
-
-# L'API n'expose qu'une recherche floue : on la balaie avec chaque lettre et
-# chaque chiffre pour récupérer un maximum de titres.
-_SEEDS = list(string.ascii_lowercase + string.digits)
-
-# Noms de champs possibles dans les réponses de l'API (à ajuster si besoin).
-_NAME_KEYS = ("name", "title", "nom", "api_name", "n", "anime")
-_POSTER_KEYS = ("img", "image", "poster", "poster_url", "cover", "thumbnail")
 
 _lock = asyncio.Lock()
 _task: asyncio.Task | None = None
+_last_scrape: float | None = None  # time.monotonic() du dernier scraping complet
 
 
-def _first(data: dict, keys: tuple[str, ...]) -> str | None:
-    for key in keys:
-        value = data.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
+# ── Appels à TMCooper ──────────────────────────────────────────────────
+
+
+async def _api(path: str, params: dict | None = None, timeout: float = 60.0):
+    """GET sur l'API TMCooper, renvoie le JSON décodé."""
+    client = tmcooper._get_client()
+    try:
+        resp = await client.get(path, params=params, timeout=timeout)
+    except httpx.HTTPError as exc:
+        raise tmcooper.TmcooperError(f"injoignable ({path}): {exc!r}")
+    try:
+        return resp.json()
+    except ValueError:
+        raise tmcooper.TmcooperError(
+            f"réponse non JSON (HTTP {resp.status_code}) sur {path}: {resp.text[:200]!r}"
+        )
+
+
+async def _anime_sama_domain() -> str | None:
+    data = await _api("/api/getAnimeSamaURL")
+    url = data.get("url") if isinstance(data, dict) else None
+    return url or None
+
+
+async def _load_catalog() -> list | None:
+    """Catalogue complet, ou None si le fichier local de TMCooper n'existe pas encore."""
+    data = await _api("/api/loadBaseAnimeData", timeout=INDEX_TIMEOUT)
+    return data if isinstance(data, list) else None
+
+
+async def _scrape(reset: bool) -> None:
+    """Lance getAllAnime (plusieurs minutes). Lève TmcooperError si ça échoue."""
+    global _last_scrape
+    logger.info("Catalogue: scraping complet d'Anime-Sama demandé à TMCooper (3 à 5 min)...")
+    result = await _api("/api/getAllAnime", {"r": "True"} if reset else None, timeout=INDEX_TIMEOUT)
+    if isinstance(result, str) and (result.lower().startswith("recup") or "existant" in result.lower()):
+        _last_scrape = time.monotonic()
+        logger.info("Catalogue: scraping terminé (%s).", result)
+        return
+    # TMCooper renvoie le code HTTP (ex. 403) si Anime-Sama refuse la requête.
+    raise tmcooper.TmcooperError(f"scraping refusé par la source: {result!r}")
+
+
+# ── Normalisation et écriture en base ──────────────────────────────────
+
+
+def _slug(link: str | None, title: str) -> str:
+    """Identifiant stable : dernier segment de l'URL (ne change pas si le domaine change)."""
+    path = urlparse(link or "").path.strip("/")
+    slug = path.split("/")[-1] if path else ""
+    return (slug or title)[:255]
 
 
 def _normalize(item) -> dict | None:
-    if isinstance(item, str):
-        name, poster = item.strip(), None
-    elif isinstance(item, dict):
-        name, poster = _first(item, _NAME_KEYS), _first(item, _POSTER_KEYS)
-    else:
+    if not isinstance(item, dict):
         return None
-    if not name:
+    title = (item.get("title") or "").strip()
+    if not title:
         return None
-    return {
-        "external_id": name[:255],
-        "title": name[:500],
-        "poster_url": poster[:1000] if poster and poster.startswith(("http://", "https://")) else None,
-    }
-
-
-async def _collect() -> dict[str, dict]:
-    """Balaye la recherche TMCooper et renvoie {external_id: ligne}."""
-    found: dict[str, dict] = {}
-    reached = False
-    for i, seed in enumerate(_SEEDS):
-        try:
-            items = await tmcooper.search(seed, SEED_LIMIT)
-        except tmcooper.TmcooperCatalogNotReady:
-            raise
-        except tmcooper.TmcooperError as exc:
-            logger.warning("Catalogue: recherche '%s' en échec: %s", seed, exc)
-            continue
-        reached = True
-        for item in items:
-            row = _normalize(item)
-            if row:
-                found.setdefault(row["external_id"], row)
-        if i < len(_SEEDS) - 1:
-            await asyncio.sleep(settings.TMCOOPER_SYNC_DELAY_SEC)
-    return found if reached else {}
+    cover = item.get("cover")
+    poster = cover[:1000] if isinstance(cover, str) and cover.startswith(("http://", "https://")) else None
+    return {"external_id": _slug(item.get("link"), title), "title": title[:500], "poster_url": poster}
 
 
 async def _upsert(rows: list[dict]) -> int:
@@ -149,22 +165,55 @@ async def _ensure_indexes() -> None:
         logger.warning("Catalogue: index trigram non créés: %s", exc)
 
 
+# ── Cycle de synchronisation ───────────────────────────────────────────
+
+
 async def sync_catalog() -> dict:
-    """Un cycle complet d'import."""
+    """Un cycle complet. Ne lève jamais d'exception TMCooper : renvoie un résumé."""
+    global _last_scrape
     if _lock.locked():
         return {"skipped": True, "reason": "un import est déjà en cours"}
 
     async with _lock:
         try:
-            found = await _collect()
-        except tmcooper.TmcooperCatalogNotReady:
-            return {"ok": False, "not_ready": True, "error": "catalogue TMCooper en cours d'indexation"}
+            domain = await _anime_sama_domain()
+            if not domain:
+                return {
+                    "ok": False,
+                    "error": "TMCooper n'a pas trouvé le domaine Anime-Sama (BASE_URL vide). "
+                             "Voir les logs [launcher] ou définir ANIMESAMA_URL.",
+                }
 
-        if not found:
-            return {"ok": False, "error": "aucun titre renvoyé, base inchangée"}
+            items = await _load_catalog()
+            if items is None:
+                await _scrape(reset=False)
+                items = await _load_catalog()
+            elif _last_scrape is None:
+                _last_scrape = time.monotonic()  # fichier déjà présent : âge inconnu
+            elif RESCRAPE_HOURS > 0 and time.monotonic() - _last_scrape >= RESCRAPE_HOURS * 3600:
+                try:
+                    await _scrape(reset=True)
+                    items = await _load_catalog() or items
+                except tmcooper.TmcooperError as exc:
+                    # on garde l'ancien fichier, il reste valable
+                    logger.warning("Catalogue: nouveau scraping impossible (%s), ancien fichier conservé.", exc)
+        except tmcooper.TmcooperError as exc:
+            return {"ok": False, "error": str(exc)}
 
-        new_count = await _upsert(list(found.values()))
-        return {"ok": True, "total": len(found), "new": new_count}
+        if not items:
+            return {"ok": False, "error": "catalogue TMCooper vide, base inchangée"}
+
+        logger.info("Catalogue: %s titres reçus de TMCooper, exemple: %.300s", len(items), repr(items[0]))
+        rows: dict[str, dict] = {}
+        for item in items:
+            row = _normalize(item)
+            if row:
+                rows.setdefault(row["external_id"], row)
+        if not rows:
+            return {"ok": False, "error": "aucun titre exploitable dans la réponse, base inchangée"}
+
+        new_count = await _upsert(list(rows.values()))
+        return {"ok": True, "total": len(rows), "new": new_count, "domain": domain}
 
 
 async def _loop() -> None:
@@ -175,16 +224,15 @@ async def _loop() -> None:
         try:
             summary = await sync_catalog()
             if summary.get("ok"):
-                logger.info("Catalogue: %s titres vus, %s nouveaux.", summary["total"], summary["new"])
-            elif summary.get("not_ready"):
-                logger.warning("Catalogue: %s, nouvel essai dans 5 min.", summary["error"])
-                wait = RETRY_NOT_READY_SEC
+                logger.info("Catalogue: %s titres en base, %s nouveaux.", summary["total"], summary["new"])
             elif not summary.get("skipped"):
-                logger.warning("Catalogue: %s", summary.get("error"))
+                logger.warning("Catalogue: %s Nouvel essai dans 5 min.", summary.get("error"))
+                wait = min(wait, RETRY_SEC)
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001 — la boucle ne doit jamais mourir
             logger.exception("Catalogue: cycle interrompu par une erreur")
+            wait = min(wait, RETRY_SEC)
         await asyncio.sleep(wait)
 
 
