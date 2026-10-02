@@ -81,8 +81,13 @@ async def lifespan(app: FastAPI):
     from services import tmcooper_sync
     tmcooper_sync.start_loop()
 
+    # Import automatique du catalogue (démarrage + refresh périodique)
+    from services import catalog_sync
+    catalog_sync.start_loop()
+
     yield
 
+    await catalog_sync.stop_loop()
     await tmcooper_sync.stop_loop()
 
     if bot_running:
@@ -110,6 +115,7 @@ app.add_middleware(
 # ── Routers ────────────────────────────────────────────────────────────
 
 from routers import admin, anilist, animes, auth, comments, episodes, folders, notifications, push, search, tmcooper, tmdb, users  # noqa: E402
+from routers import catalog as catalog_router  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(animes.router, prefix="/api/animes", tags=["Animes"])
@@ -124,6 +130,7 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(tmcooper.router, prefix="/api/admin/tmcooper", tags=["Admin - TMCooper"])
 app.include_router(tmdb.router, prefix="/api/tmdb", tags=["TMDB"])
 app.include_router(anilist.router, prefix="/api/anilist", tags=["AniList"])
+app.include_router(catalog_router.router, prefix="/api/catalog", tags=["Catalog"])
 
 
 @app.get("/api/health")
