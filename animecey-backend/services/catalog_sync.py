@@ -13,14 +13,21 @@ Ce module :
   3. l'enregistre en base (ajoute les nouveautés, met à jour le reste) ;
   4. recommence toutes les CATALOG_SYNC_INTERVAL_MIN minutes (30 par défaut) ;
   5. relance un scraping complet toutes les CATALOG_RESCRAPE_HOURS heures
-     (6 par défaut) pour que les vraies nouveautés d'Anime-Sama arrivent.
+     (168 = 1 semaine par défaut) pour que les vraies nouveautés arrivent.
+
+Économie de requêtes (important avec un proxy à quota, ex. Fixie) : le fichier
+de TMCooper disparaît à chaque redémarrage du conteneur. Si la base contient
+déjà le catalogue, on ne relance PAS de scraping pour autant ; la date du
+dernier scraping est gardée en base (table catalog_meta).
 
 Jamais de suppression en base : en cas de panne côté TMCooper, rien ne bouge.
 
 Variables d'environnement (toutes optionnelles) :
   CATALOG_SYNC_ENABLED        true / false            (défaut : true)
   CATALOG_SYNC_INTERVAL_MIN   minutes entre 2 cycles   (défaut : 30)
-  CATALOG_RESCRAPE_HOURS      heures entre 2 scrapings complets, 0 = jamais (défaut : 6)
+  CATALOG_RESCRAPE_HOURS      heures entre 2 scrapings complets, 0 = jamais (défaut : 168)
+  CATALOG_MIN_TITLES          nb de titres en base au-delà duquel on considère le
+                              catalogue déjà rempli (défaut : 50)
 
 Mettre ce fichier dans services/catalog_sync.py.
 """
@@ -30,12 +37,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import time
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
-from sqlalchemy import func, literal_column, text
+from sqlalchemy import func, literal_column, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from database import async_session, engine
@@ -47,14 +53,14 @@ logger = logging.getLogger(__name__)
 SOURCE = "tmcooper"
 ENABLED = os.getenv("CATALOG_SYNC_ENABLED", "true").lower() in ("true", "1", "yes")
 INTERVAL_MIN = max(1, int(os.getenv("CATALOG_SYNC_INTERVAL_MIN", "30")))
-RESCRAPE_HOURS = max(0.0, float(os.getenv("CATALOG_RESCRAPE_HOURS", "6")))
+RESCRAPE_HOURS = max(0.0, float(os.getenv("CATALOG_RESCRAPE_HOURS", "168")))
+MIN_TITLES = max(1, int(os.getenv("CATALOG_MIN_TITLES", "50")))
 RETRY_SEC = 300
 INDEX_TIMEOUT = 1800.0
 BATCH = 200
 
 _lock = asyncio.Lock()
 _task: asyncio.Task | None = None
-_last_scrape: float | None = None  # time.monotonic() du dernier scraping complet
 
 
 # ── Appels à TMCooper ──────────────────────────────────────────────────
@@ -89,15 +95,52 @@ async def _load_catalog() -> list | None:
 
 async def _scrape(reset: bool) -> None:
     """Lance getAllAnime (plusieurs minutes). Lève TmcooperError si ça échoue."""
-    global _last_scrape
     logger.info("Catalogue: scraping complet d'Anime-Sama demandé à TMCooper (3 à 5 min)...")
     result = await _api("/api/getAllAnime", {"r": "True"} if reset else None, timeout=INDEX_TIMEOUT)
     if isinstance(result, str) and (result.lower().startswith("recup") or "existant" in result.lower()):
-        _last_scrape = time.monotonic()
+        await _mark_scrape()
         logger.info("Catalogue: scraping terminé (%s).", result)
         return
     # TMCooper renvoie le code HTTP (ex. 403) si Anime-Sama refuse la requête.
     raise tmcooper.TmcooperError(f"scraping refusé par la source: {result!r}")
+
+
+# ── Mémoire du dernier scraping (survit aux redémarrages) ──────────────
+
+
+async def _ensure_meta_table() -> None:
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "CREATE TABLE IF NOT EXISTS catalog_meta ("
+            "key VARCHAR(64) PRIMARY KEY, value TEXT, "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+        ))
+
+
+async def _last_scrape_age() -> float | None:
+    """Secondes écoulées depuis le dernier scraping, ou None s'il n'y en a jamais eu."""
+    async with async_session() as db:
+        age = (await db.execute(text(
+            "SELECT EXTRACT(EPOCH FROM (now() - updated_at)) "
+            "FROM catalog_meta WHERE key = 'last_scrape'"
+        ))).scalar()
+    return float(age) if age is not None else None
+
+
+async def _mark_scrape() -> None:
+    async with async_session() as db:
+        await db.execute(text(
+            "INSERT INTO catalog_meta (key, value, updated_at) VALUES ('last_scrape', 'ok', now()) "
+            "ON CONFLICT (key) DO UPDATE SET updated_at = now()"
+        ))
+        await db.commit()
+
+
+async def _db_count() -> int:
+    async with async_session() as db:
+        return (await db.execute(
+            select(func.count()).select_from(CatalogTitle).where(CatalogTitle.source == SOURCE)
+        )).scalar() or 0
 
 
 # ── Normalisation et écriture en base ──────────────────────────────────
@@ -170,7 +213,6 @@ async def _ensure_indexes() -> None:
 
 async def sync_catalog() -> dict:
     """Un cycle complet. Ne lève jamais d'exception TMCooper : renvoie un résumé."""
-    global _last_scrape
     if _lock.locked():
         return {"skipped": True, "reason": "un import est déjà en cours"}
 
@@ -185,12 +227,25 @@ async def sync_catalog() -> dict:
                 }
 
             items = await _load_catalog()
+            age = await _last_scrape_age()
+            due = RESCRAPE_HOURS > 0 and age is not None and age >= RESCRAPE_HOURS * 3600
+
             if items is None:
+                # Fichier TMCooper absent (premier lancement ou redémarrage du conteneur).
+                in_db = await _db_count()
+                if in_db >= MIN_TITLES and not due:
+                    if age is None:
+                        await _mark_scrape()  # base déjà remplie avant l'ajout de catalog_meta
+                    logger.info(
+                        "Catalogue: fichier TMCooper absent mais %s titres déjà en base : "
+                        "scraping évité (économie de requêtes).", in_db,
+                    )
+                    return {"ok": True, "total": in_db, "new": 0, "domain": domain}
                 await _scrape(reset=False)
                 items = await _load_catalog()
-            elif _last_scrape is None:
-                _last_scrape = time.monotonic()  # fichier déjà présent : âge inconnu
-            elif RESCRAPE_HOURS > 0 and time.monotonic() - _last_scrape >= RESCRAPE_HOURS * 3600:
+            elif age is None:
+                await _mark_scrape()  # fichier présent, âge du scraping inconnu
+            elif due:
                 try:
                     await _scrape(reset=True)
                     items = await _load_catalog() or items
@@ -218,6 +273,10 @@ async def sync_catalog() -> dict:
 
 async def _loop() -> None:
     await asyncio.sleep(20)  # laisse l'API (et TMCooper) finir de démarrer
+    try:
+        await _ensure_meta_table()
+    except Exception:  # noqa: BLE001
+        logger.exception("Catalogue: table catalog_meta non créée")
     await _ensure_indexes()
     while True:
         wait = INTERVAL_MIN * 60

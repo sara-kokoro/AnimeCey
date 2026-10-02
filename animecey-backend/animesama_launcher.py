@@ -1,11 +1,22 @@
-"""Lance AnimeSamaApi (TMCooper) en local, avec deux garde-fous en plus.
+"""Lance AnimeSamaApi (TMCooper) en local, avec trois ajouts.
 
-  1. Si TMCooper ne trouve pas le domaine Anime-Sama au démarrage (BASE_URL vide),
-     ce script affiche le code HTTP reçu pour chaque domaine candidat : on voit
-     tout de suite si c'est un blocage Cloudflare (403), un timeout ou une
-     redirection.
-  2. Variable ANIMESAMA_URL (ex. https://anime-sama.xx) : si elle est définie,
+  1. Proxy Fixie (IP fixe) : si FIXIE_URL est défini, les requêtes vers
+     Anime-Sama passent par Fixie. Les autres (hébergeurs vidéo : Sibnet,
+     Vidmoly...) restent directes, car leurs liens sont souvent liés à l'IP
+     qui les a demandés : un lien obtenu via Fixie ne marcherait pas chez
+     l'utilisateur.
+  2. Si TMCooper ne trouve pas le domaine Anime-Sama au démarrage (BASE_URL vide),
+     le code HTTP reçu pour chaque domaine candidat est affiché dans les logs.
+  3. Variable ANIMESAMA_URL (ex. https://anime-sama.xx) : si elle est définie,
      elle remplace le domaine détecté automatiquement.
+
+Variables d'environnement :
+  FIXIE_URL               http://fixie:TOKEN@xxxx.usefixie.com:80  (fournie par Fixie)
+  ANIMESAMA_PROXY_HOSTS   morceaux de noms d'hôtes à passer par le proxy,
+                          séparés par des virgules (défaut : anime-sama).
+                          "*" = tout passe par le proxy.
+  ANIMESAMA_URL           domaine Anime-Sama à forcer (optionnel)
+  ANIMESAMA_DIR / ANIMESAMA_PORT
 
 Le code de TMCooper n'est pas modifié. Pas de mode debug, pas de reloader, et
 pas de vérification git interactive (input()) qui planterait sans terminal.
@@ -16,6 +27,7 @@ Mettre ce fichier à la racine du backend (à côté de start.sh).
 import os
 import re
 import sys
+from urllib.parse import urlparse
 
 ROOT = os.getenv("ANIMESAMA_DIR", "/opt/AnimeSamaApi")
 PORT = int(os.getenv("ANIMESAMA_PORT", "5000"))
@@ -24,11 +36,58 @@ HOST = "127.0.0.1"
 os.chdir(ROOT)
 sys.path.insert(0, ROOT)
 
-import src.backend as backend  # noqa: E402  (cherche le domaine au chargement)
-
 
 def log(msg: str) -> None:
     print(f"[launcher] {msg}", flush=True)
+
+
+# --- proxy begin ---------------------------------------------------------
+# À installer AVANT d'importer TMCooper : il cherche déjà le domaine à l'import.
+import requests  # noqa: E402
+
+PROXY_URL = (os.getenv("FIXIE_URL") or os.getenv("ANIMESAMA_PROXY") or "").strip()
+PROXY_HOSTS = [
+    h.strip().lower()
+    for h in os.getenv("ANIMESAMA_PROXY_HOSTS", "anime-sama").split(",")
+    if h.strip()
+]
+
+
+def _use_proxy(url: str) -> bool:
+    if "*" in PROXY_HOSTS:
+        return True
+    host = (urlparse(str(url)).hostname or "").lower()
+    return any(part in host for part in PROXY_HOSTS)
+
+
+def install_proxy() -> None:
+    original = requests.Session.request
+
+    def request(self, method, url, *args, **kwargs):
+        if not kwargs.get("proxies") and _use_proxy(url):
+            kwargs["proxies"] = {"http": PROXY_URL, "https": PROXY_URL}
+        return original(self, method, url, *args, **kwargs)
+
+    requests.Session.request = request
+
+
+if PROXY_URL:
+    install_proxy()
+    shown = PROXY_URL.split("@")[-1]  # sans identifiants
+    log(f"proxy Fixie actif ({shown}) pour: {', '.join(PROXY_HOSTS)}")
+else:
+    log("pas de proxy (FIXIE_URL non défini)")
+# --- proxy end -----------------------------------------------------------
+
+override = os.getenv("ANIMESAMA_URL", "").strip().rstrip("/")
+if override:
+    # Domaine connu : on saute la détection automatique (économise des requêtes proxy
+    # à chaque démarrage) en remplaçant la fonction de TMCooper avant son import.
+    import src.utils.utils as _tm_utils  # noqa: E402
+
+    _tm_utils.Utils.findLink = lambda *args, **kwargs: override
+
+import src.backend as backend  # noqa: E402  (cherche le domaine au chargement)
 
 
 def diagnose() -> None:
@@ -55,10 +114,9 @@ def diagnose() -> None:
         log(f"diagnostic impossible: {exc!r}")
 
 
-override = os.getenv("ANIMESAMA_URL", "").strip().rstrip("/")
 if override:
     backend.BASE_URL = override
-    log(f"domaine forcé par ANIMESAMA_URL: {override}")
+    log(f"domaine forcé par ANIMESAMA_URL (détection automatique sautée): {override}")
 elif not backend.BASE_URL:
     log("TMCooper n'a trouvé aucun domaine Anime-Sama actif. Diagnostic :")
     diagnose()
