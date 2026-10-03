@@ -1,37 +1,60 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Search as SearchIcon, X, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
-import { AnimeGrid } from "@/components/anime/AnimeGrid";
-import { fetchAnimes, type AnimeFilters } from "@/api/animes";
+import { CatalogGrid } from "@/components/anime/CatalogGrid";
+import { getApiError } from "@/api/axios";
+import { openCatalogTitle, searchCatalog, type CatalogItem } from "@/api/catalog";
+
+const PAGE_SIZE = 24;
 
 export default function Search() {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const initialQ = params.get("q") ?? "";
   const [input, setInput] = useState(initialQ);
   const [debounced, setDebounced] = useState(initialQ);
+  const [page, setPage] = useState(1);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(input), 300);
+    const t = setTimeout(() => setDebounced(input.trim()), 300);
     return () => clearTimeout(t);
   }, [input]);
 
   useEffect(() => {
+    setPage(1);
     if (debounced) setParams({ q: debounced }, { replace: true });
     else setParams({}, { replace: true });
   }, [debounced, setParams]);
 
-  const apiFilters: AnimeFilters = { q: debounced || undefined, limit: 24 };
   const { data, isLoading } = useQuery({
-    queryKey: ["search-animes", debounced],
-    queryFn: () => fetchAnimes(apiFilters),
+    queryKey: ["search-catalog", debounced, page],
+    queryFn: () => searchCatalog(debounced, page, PAGE_SIZE),
     enabled: !!debounced,
   });
 
   const results = data?.items ?? [];
+
+  async function handleOpen(item: CatalogItem) {
+    if (openingId) return;
+    setOpeningId(item.id);
+    try {
+      const res = await openCatalogTitle(item.id);
+      if (res.preparing) {
+        toast.info("Les épisodes sont en cours de préparation, cela peut prendre quelques minutes.");
+      }
+      navigate(`/anime/${res.anime_id}`);
+    } catch (err) {
+      toast.error(getApiError(err, "Impossible d'ouvrir ce titre pour le moment."));
+    } finally {
+      setOpeningId(null);
+    }
+  }
 
   return (
     <motion.div
@@ -89,11 +112,36 @@ export default function Search() {
             </p>
           )}
           {debounced && !isLoading && (
-            <AnimeGrid
-              animes={results}
-              emptyMessage={debounced ? `Aucun résultat pour "${debounced}"` : "Aucun résultat"}
-              emptyHint="Essaie un autre titre ou modifie les filtres."
-            />
+            <>
+              <CatalogGrid
+                items={results}
+                onOpen={handleOpen}
+                openingId={openingId}
+                emptyMessage={`Aucun résultat pour "${debounced}"`}
+                emptyHint="Essaie un autre titre ou une partie du nom."
+              />
+              {(data?.pages ?? 1) > 1 && (
+                <div className="mt-8 flex items-center justify-center gap-4 font-body text-sm">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className="px-4 py-2 rounded-lg bg-surface border border-border-subtle text-foreground disabled:opacity-40"
+                  >
+                    Précédent
+                  </button>
+                  <span className="text-muted-foreground">
+                    Page {page} sur {data?.pages}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => Math.min(data?.pages ?? 1, p + 1))}
+                    disabled={page >= (data?.pages ?? 1)}
+                    className="px-4 py-2 rounded-lg bg-surface border border-border-subtle text-foreground disabled:opacity-40"
+                  >
+                    Suivant
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>

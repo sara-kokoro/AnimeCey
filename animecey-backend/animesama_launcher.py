@@ -12,6 +12,10 @@
 
 Variables d'environnement :
   FIXIE_URL               http://fixie:TOKEN@xxxx.usefixie.com:80  (fournie par Fixie)
+  ANIMESAMA_PROXY_MODE    auto (défaut) : au démarrage, un test DIRECT (sans proxy,
+                          donc gratuit) est fait sur Anime-Sama ; s'il passe (HTTP 200),
+                          le proxy est désactivé et ne consomme aucune requête.
+                          always : le proxy est toujours utilisé.
   ANIMESAMA_PROXY_HOSTS   morceaux de noms d'hôtes à passer par le proxy,
                           séparés par des virgules (défaut : anime-sama).
                           "*" = tout passe par le proxy.
@@ -46,6 +50,8 @@ def log(msg: str) -> None:
 import requests  # noqa: E402
 
 PROXY_URL = (os.getenv("FIXIE_URL") or os.getenv("ANIMESAMA_PROXY") or "").strip()
+PROXY_MODE = os.getenv("ANIMESAMA_PROXY_MODE", "auto").strip().lower()
+_proxy_enabled = True
 PROXY_HOSTS = [
     h.strip().lower()
     for h in os.getenv("ANIMESAMA_PROXY_HOSTS", "anime-sama").split(",")
@@ -64,7 +70,7 @@ def install_proxy() -> None:
     original = requests.Session.request
 
     def request(self, method, url, *args, **kwargs):
-        if not kwargs.get("proxies") and _use_proxy(url):
+        if _proxy_enabled and kwargs.get("proxies") is None and _use_proxy(url):
             kwargs["proxies"] = {"http": PROXY_URL, "https": PROXY_URL}
         return original(self, method, url, *args, **kwargs)
 
@@ -114,6 +120,17 @@ def diagnose() -> None:
         log(f"diagnostic impossible: {exc!r}")
 
 
+def probe_direct(base_url: str) -> int | None:
+    """Code HTTP d'Anime-Sama SANS proxy (proxies={} = aucun proxy, aucune requête Fixie)."""
+    try:
+        import cloudscraper
+
+        return cloudscraper.create_scraper().get(base_url, timeout=15, proxies={}).status_code
+    except Exception as exc:  # noqa: BLE001
+        log(f"test direct impossible: {type(exc).__name__}")
+        return None
+
+
 if override:
     backend.BASE_URL = override
     log(f"domaine forcé par ANIMESAMA_URL (détection automatique sautée): {override}")
@@ -123,6 +140,15 @@ elif not backend.BASE_URL:
     log("Définis ANIMESAMA_URL si tu connais le bon domaine.")
 else:
     log(f"domaine Anime-Sama détecté: {backend.BASE_URL}")
+
+if PROXY_URL and PROXY_MODE != "always" and backend.BASE_URL:
+    code = probe_direct(backend.BASE_URL)
+    if code == 200:
+        _proxy_enabled = False
+        log(f"test direct sur {backend.BASE_URL}: HTTP 200, accès sans proxy possible : "
+            "proxy désactivé (aucune requête Fixie consommée).")
+    else:
+        log(f"test direct sur {backend.BASE_URL}: HTTP {code}, accès bloqué : le proxy reste actif.")
 
 from src.api import Yui  # noqa: E402
 from src.utils.config import Config  # noqa: E402
