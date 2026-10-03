@@ -1,14 +1,16 @@
-"""Recherche dans le catalogue importé + ouverture d'un titre.
+"""Catalogue : recherche, ouverture d'un titre, saisons et serveurs.
 
-  GET  /api/catalog/search?q=...        recherche dans la base (aucun appel à TMCooper)
-  GET  /api/catalog/latest              dernières nouveautés ajoutées
-  POST /api/catalog/{id}/open           crée l'animé (si besoin), détecte ses saisons,
-                                        lance la récupération des épisodes en arrière-plan
-                                        et renvoie l'id de l'animé pour la page de lecture
+  GET  /api/catalog/search?q=...                  recherche dans la base (aucun appel TMCooper)
+  GET  /api/catalog/latest                        dernières nouveautés ajoutées
+  POST /api/catalog/{id}/open                     crée l'animé (métadonnées TMDB + AniList,
+                                                  saisons/sagas de TMCooper) et renvoie son id
+  POST /api/catalog/anime/{id}/ensure             prépare les épisodes d'une saison à la demande
+  GET  /api/catalog/anime/{id}/seasons            noms des saisons / sagas
+  GET  /api/catalog/episodes/{id}/servers         TOUS les serveurs d'un épisode
 
-Économie de requêtes proxy : ouvrir un titre déjà ouvert ne coûte rien. Créer un
-nouveau titre demande d'être connecté, et seule la version VOSTFR est récupérée
-par défaut (variable CATALOG_OPEN_VERSIONS="vostfr,vf" pour ajouter la VF).
+Économie de requêtes proxy : ouvrir un titre déjà ouvert ne coûte rien ; créer un
+nouveau titre demande d'être connecté ; seule la 1re saison est préparée à
+l'ouverture, les autres le sont au moment où quelqu'un les consulte.
 
 Mettre ce fichier dans routers/catalog.py.
 """
@@ -29,19 +31,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth import get_current_user_optional
 from database import get_db
 from models import Anime, AnimeStatus, AnimeType, Episode, TmcooperSource, User
-from models_catalog import CatalogTitle
-from services import catalog_sync, tmcooper, tmcooper_sync
+from models_catalog import AnimeSeason, CatalogTitle, EpisodeServer
+from services import catalog_episodes, catalog_meta, catalog_sync, tmcooper, tmcooper_sync
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 OPEN_VERSIONS = [
-    v.strip().lower() for v in os.getenv("CATALOG_OPEN_VERSIONS", "vostfr").split(",") if v.strip()
+    v.strip().lower() for v in os.getenv("CATALOG_OPEN_VERSIONS", "vostfr,vf").split(",") if v.strip()
 ] or ["vostfr"]
-_SEASON_RE = re.compile(r"^[a-z]+\d*$")
 
 _open_lock = asyncio.Lock()
+_inflight: set[int] = set()
 _background: set[asyncio.Task] = set()
 
 
@@ -62,6 +64,9 @@ def _item(row: CatalogTitle) -> dict:
         "is_ongoing": row.is_ongoing,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
+
+
+# ── Recherche ──────────────────────────────────────────────────────────
 
 
 @router.get("/search")
@@ -108,20 +113,36 @@ async def latest_titles(
     return [_item(r) for r in rows]
 
 
+# ── Synchronisation en arrière-plan ────────────────────────────────────
+
+
+async def _run_sync(source_ids: list[int]) -> None:
+    for sid in source_ids:
+        try:
+            async with tmcooper_sync._sync_lock:
+                await catalog_episodes.sync_source(sid, force=True)
+        except Exception:  # noqa: BLE001
+            logger.exception("Catalogue: synchro de la source %s en échec", sid)
+        finally:
+            _inflight.discard(sid)
+
+
+def _schedule(source_ids: list[int]) -> None:
+    ids = [s for s in source_ids if s not in _inflight]
+    if not ids:
+        return
+    _inflight.update(ids)
+    task = asyncio.create_task(_run_sync(ids))
+    _background.add(task)
+    task.add_done_callback(_background.discard)
+
+
 # ── Ouverture d'un titre ───────────────────────────────────────────────
 
 
 def _season_key(name: str) -> str:
-    """'Saison 2' -> 'saison2' (forme attendue par TMCooper pour le paramètre s=)."""
+    """'Saga 1 (East Blue)' -> 'saga1(eastblue)' (forme attendue par TMCooper pour s=)."""
     return re.sub(r"\s+", "", (name or "").strip().lower())
-
-
-async def _sync_in_background(source_ids: list[int]) -> None:
-    for source_id in source_ids:
-        try:
-            await tmcooper_sync.sync_one(source_id)
-        except Exception:  # noqa: BLE001
-            logger.exception("Catalogue: synchro de la source %s en échec", source_id)
 
 
 @router.post("/{title_id}/open")
@@ -156,40 +177,117 @@ async def open_title(
         except tmcooper.TmcooperError as exc:
             raise HTTPException(status_code=502, detail=f"Source indisponible: {exc}")
 
-        seasons: list[str] = []
+        # Toutes les saisons / sagas, dans l'ordre d'Anime-Sama (hors scans de manga).
+        seasons: list[tuple[str, str]] = []
+        seen: set[str] = set()
         for item in raw:
-            key = _season_key(item.get("Saison", "")) if isinstance(item, dict) else ""
-            if key and _SEASON_RE.match(key) and key not in seasons:
-                seasons.append(key)
+            label = str(item.get("Saison") or "").strip() if isinstance(item, dict) else ""
+            key = _season_key(label)
+            if not key or key.startswith("scan") or len(key) > 50 or key in seen:
+                continue
+            seen.add(key)
+            seasons.append((key, label[:255]))
         if not seasons:
             raise HTTPException(status_code=404, detail="Aucune saison trouvée pour ce titre")
 
-        poster = title.poster_url if title.poster_url and len(title.poster_url) <= 500 else None
+        # Métadonnées : TMDB (français) + AniList, comme à la création manuelle.
+        meta = await catalog_meta.find_metadata(title.title, title.poster_url, db)
+        for field in ("tmdb_id", "anilist_id"):  # colonnes uniques : pas de doublon
+            value = meta.get(field)
+            if value and (await db.execute(select(Anime.id).where(getattr(Anime, field) == value))).first():
+                meta[field] = None
+
+        all_film = all(k.startswith("film") for k, _ in seasons)
         anime = Anime(
             title=title.title[:255],
-            title_jp=title.title_jp[:255] if title.title_jp else None,
-            type=AnimeType.film if all(s.startswith("film") for s in seasons) else AnimeType.serie,
-            status=AnimeStatus.completed,
-            synopsis=None,
-            poster_url=poster,
-            genres=[],
-            score=0.0,
-            year=title.year,
+            title_jp=meta.get("title_jp"),
+            type=AnimeType.film if (all_film or (meta.get("is_film") and len(seasons) == 1)) else AnimeType.serie,
+            status=AnimeStatus(meta.get("status") or "completed"),
+            synopsis=meta.get("synopsis"),
+            poster_url=meta.get("poster_url"),
+            banner_url=meta.get("banner_url"),
+            genres=meta.get("genres") or [],
+            score=meta.get("score") or 0.0,
+            year=meta.get("year") or title.year,
+            tmdb_id=meta.get("tmdb_id"),
+            anilist_id=meta.get("anilist_id"),
+            trailer_url=meta.get("trailer_url"),
         )
         db.add(anime)
         await db.flush()
-        for season in seasons:
+        for number, (key, label) in enumerate(seasons, start=1):
+            db.add(AnimeSeason(anime_id=anime.id, season_number=number, api_season=key, label=label))
             for version in OPEN_VERSIONS:
-                db.add(TmcooperSource(anime_id=anime.id, api_name=title.title, season=season, version=version))
+                db.add(TmcooperSource(anime_id=anime.id, api_name=title.title, season=key, version=version))
         await db.commit()
 
-        source_ids = (
+        first_key = seasons[0][0]
+        first_ids = (
             await db.execute(
-                select(TmcooperSource.id).where(TmcooperSource.anime_id == anime.id).order_by(TmcooperSource.id)
+                select(TmcooperSource.id).where(
+                    TmcooperSource.anime_id == anime.id, TmcooperSource.season == first_key
+                )
             )
         ).scalars().all()
 
-    task = asyncio.create_task(_sync_in_background(list(source_ids)))
-    _background.add(task)
-    task.add_done_callback(_background.discard)
-    return {"anime_id": anime.id, "preparing": True, "seasons": seasons}
+    _schedule(list(first_ids))
+    return {"anime_id": anime.id, "preparing": True, "seasons": [label for _, label in seasons]}
+
+
+# ── Saisons et serveurs ────────────────────────────────────────────────
+
+
+@router.get("/anime/{anime_id}/seasons")
+async def anime_seasons(anime_id: int, db: AsyncSession = Depends(get_db)):
+    rows = (
+        await db.execute(
+            select(AnimeSeason).where(AnimeSeason.anime_id == anime_id).order_by(AnimeSeason.season_number)
+        )
+    ).scalars().all()
+    return [{"number": r.season_number, "label": r.label} for r in rows]
+
+
+@router.post("/anime/{anime_id}/ensure")
+async def ensure_season(
+    anime_id: int,
+    language: str = Query(..., max_length=10),
+    season: int = Query(..., ge=1),
+    db: AsyncSession = Depends(get_db),
+):
+    """Prépare une saison à la demande (elle n'est pas récupérée avant qu'on la consulte)."""
+    version = "vf" if language.upper() == "VF" else "vostfr"
+    row = (
+        await db.execute(
+            select(AnimeSeason).where(AnimeSeason.anime_id == anime_id, AnimeSeason.season_number == season)
+        )
+    ).scalars().first()
+    if row is None:
+        return {"preparing": False}
+    src = (
+        await db.execute(
+            select(TmcooperSource).where(
+                TmcooperSource.anime_id == anime_id,
+                TmcooperSource.season == row.api_season,
+                TmcooperSource.version == version,
+            )
+        )
+    ).scalars().first()
+    if src is None:
+        return {"preparing": False}
+    if src.id in _inflight:
+        return {"preparing": True}
+    failed = src.last_sync_at is not None and not src.last_count and (src.last_status or "").startswith("erreur")
+    if src.last_sync_at is not None and not failed:
+        return {"preparing": False}
+    _schedule([src.id])
+    return {"preparing": True}
+
+
+@router.get("/episodes/{episode_id}/servers")
+async def episode_servers(episode_id: int, db: AsyncSession = Depends(get_db)):
+    rows = (
+        await db.execute(
+            select(EpisodeServer).where(EpisodeServer.episode_id == episode_id).order_by(EpisodeServer.position)
+        )
+    ).scalars().all()
+    return [{"id": r.id, "label": r.label, "url": r.url, "type": r.type} for r in rows]

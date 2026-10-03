@@ -10,13 +10,14 @@ import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
 import { fetchEpisode, fetchEpisodes, getStreamUrl } from "@/api/episodes";
 import { fetchAnime } from "@/api/animes";
+import { fetchAutoStream, fetchEpisodeServers, fetchSeasonLabels } from "@/api/catalog";
 import type { Language } from "@/types";
 
 export default function Watch() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [serveur, setServeur] = useState<"servcey1" | "servcey2">("servcey1");
+  const [serverKey, setServerKey] = useState<string | null>(null);
   const [language, setLanguage] = useState<Language | null>(null);
   const [liked, setLiked] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -43,11 +44,49 @@ export default function Watch() {
     enabled: !!animeId,
   });
 
-  const { data: streamData } = useQuery({
-    queryKey: ["stream", Number(id), serveur],
-    queryFn: () => getStreamUrl(Number(id), serveur),
+  const { data: servers = [], isLoading: loadingServers } = useQuery({
+    queryKey: ["episode-servers", Number(id)],
+    queryFn: () => fetchEpisodeServers(Number(id)),
     enabled: !!id,
   });
+
+  const { data: seasonLabels = [] } = useQuery({
+    queryKey: ["season-labels", animeId],
+    queryFn: () => fetchSeasonLabels(animeId!),
+    enabled: !!animeId,
+  });
+
+  // Tous les serveurs TMCooper de l'épisode, puis les anciens ServCey s'ils existent.
+  const serverOptions: { value: string; label: string }[] = [
+    ...servers.map((s) => ({ value: `srv:${s.id}`, label: s.label })),
+    ...(episode?.servcey1_available ? [{ value: "servcey1", label: "ServCey 1" }] : []),
+    ...(episode?.servcey2_available ? [{ value: "servcey2", label: "ServCey 2" }] : []),
+  ];
+  if (!loadingServers && serverOptions.length === 0) {
+    serverOptions.push({ value: "auto", label: "Serveur 1" });
+  }
+  const selectedKey = serverOptions.some((o) => o.value === serverKey)
+    ? (serverKey as string)
+    : (serverOptions[0]?.value ?? "");
+  const selectedServer = servers.find((s) => `srv:${s.id}` === selectedKey);
+  const isLegacy = selectedKey === "servcey1" || selectedKey === "servcey2";
+
+  const {
+    data: legacyStream,
+    isFetched: legacyFetched,
+    isError: legacyError,
+  } = useQuery({
+    queryKey: ["stream", Number(id), selectedKey],
+    queryFn: () =>
+      isLegacy
+        ? getStreamUrl(Number(id), selectedKey as "servcey1" | "servcey2")
+        : fetchAutoStream(Number(id)),
+    enabled: !!id && !loadingServers && !selectedServer && selectedKey !== "",
+    retry: false,
+  });
+
+  const playerUrl = selectedServer?.url ?? legacyStream?.url;
+  const noSource = !loadingServers && !playerUrl && !selectedServer && (legacyFetched || legacyError);
 
   if (loadingEp) {
     return (
@@ -58,6 +97,9 @@ export default function Watch() {
   }
 
   if (!episode) return <Navigate to="/" replace />;
+
+  const seasonLabel =
+    seasonLabels.find((s) => s.number === episode.season_number)?.label ?? `Saison ${episode.season_number}`;
 
   const currentIndex = episodes.findIndex((e) => e.id === episode.id);
   const prev = currentIndex > 0 ? episodes[currentIndex - 1] : null;
@@ -75,15 +117,15 @@ export default function Watch() {
       <div className="pt-16 mx-auto max-w-[1500px] px-0 md:px-6 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
         <div className="min-w-0">
           <div className="relative w-full aspect-video bg-black md:rounded-2xl overflow-hidden">
-            {loading && (
+            {loading && !noSource && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <Loader2 className="w-10 h-10 text-primary animate-spin" />
               </div>
             )}
-            {streamData?.url ? (
+            {playerUrl ? (
               <motion.iframe
-                key={`${episode.id}-${serveur}-${lang}`}
-                src={streamData.url}
+                key={`${episode.id}-${selectedKey}-${lang}`}
+                src={playerUrl}
                 title={`${anime?.title ?? "Anime"} - ${episode.title ?? `Épisode ${episode.episode_number}`}`}
                 className="w-full h-full"
                 allow="autoplay; encrypted-media; fullscreen"
@@ -95,7 +137,7 @@ export default function Watch() {
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-muted-foreground font-body text-sm">
-                {loading ? "" : "Source non disponible pour ce serveur."}
+                {noSource ? "Source non disponible pour ce serveur." : ""}
               </div>
             )}
           </div>
@@ -108,12 +150,9 @@ export default function Watch() {
                 </p>
                 <ToggleGroup2
                   size="sm"
-                  value={serveur}
-                  onChange={(v) => { setServeur(v as "servcey1" | "servcey2"); setLoading(true); }}
-                  options={[
-                    { value: "servcey1", label: "ServCey 1" },
-                    { value: "servcey2", label: "ServCey 2" },
-                  ]}
+                  value={selectedKey}
+                  onChange={(v) => { setServerKey(String(v)); setLoading(true); }}
+                  options={serverOptions}
                 />
               </div>
               {anime?.languages_available && anime.languages_available.length > 0 && (
@@ -157,7 +196,7 @@ export default function Watch() {
                 {anime?.title ?? "Anime"}
               </h1>
               <p className="text-muted-foreground font-body mt-1">
-                Saison {episode.season_number} — Épisode {episode.episode_number}
+                {seasonLabel} — Épisode {episode.episode_number}
                 {episode.title ? ` : ${episode.title}` : ""}
               </p>
             </div>
@@ -178,7 +217,7 @@ export default function Watch() {
         <aside className="hidden lg:block">
           <div className="sticky top-20">
             <h3 className="font-display font-bold text-sm mb-3">
-              Épisodes — S{episode.season_number}
+              Épisodes — {seasonLabel}
             </h3>
             <div className="space-y-2 max-h-[calc(100vh-6rem)] overflow-y-auto pr-1">
               {episodes.map((ep, i) => (

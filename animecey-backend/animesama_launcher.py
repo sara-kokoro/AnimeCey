@@ -22,6 +22,10 @@ Variables d'environnement :
   ANIMESAMA_URL           domaine Anime-Sama à forcer (optionnel)
   ANIMESAMA_DIR / ANIMESAMA_PORT
 
+  4. Route supplémentaire /api/getAnimeServers : renvoie TOUS les lecteurs d'Anime-Sama
+     pour une saison (TMCooper n'en garde qu'un par épisode). Elle réutilise les
+     fonctions de TMCooper et ne coûte que 2 requêtes par saison et version.
+
 Le code de TMCooper n'est pas modifié. Pas de mode debug, pas de reloader, et
 pas de vérification git interactive (input()) qui planterait sans terminal.
 
@@ -152,6 +156,101 @@ if PROXY_URL and PROXY_MODE != "always" and backend.BASE_URL:
 
 from src.api import Yui  # noqa: E402
 from src.utils.config import Config  # noqa: E402
+
+
+# --- route /api/getAnimeServers -------------------------------------------
+import time  # noqa: E402
+
+_INFO_CACHE: dict = {}  # nom -> (horodatage, saisons) ; évite de relire la page de l'animé
+
+
+def _norm(text) -> str:
+    return (text or "").strip().lower().replace(" ", "")
+
+
+def pick_season(info, saison):
+    """Comme getSpecificAnime, mais sans retomber sur la 1re saison si le nom ne correspond pas."""
+    wanted = _norm(saison)
+    for item in info or []:
+        if isinstance(item, dict) and _norm(item.get("Saison")) == wanted:
+            return item
+    if wanted in ("oav", "oavs"):
+        for item in info or []:
+            if isinstance(item, dict) and "oav" in _norm(item.get("Saison")):
+                return item
+    return None
+
+
+def build_link(url: str, saison: str, version: str) -> str:
+    """Même construction d'URL que getAnimeLink."""
+    key = _norm(saison)
+    version = _norm(version)
+    if key == "film":
+        base = url.lower().replace("//film", "/film")
+    elif key in ("oav", "oavs"):
+        base = url.lower().replace("//oav", "/oav")
+    else:
+        base = url
+    base = re.sub(r"/(?:vostfr|vf)/?$", "", base, flags=re.IGNORECASE)
+    return f"{base}/{version}"
+
+
+def extract_servers(js_text: str) -> list:
+    """episodes.js -> [{"name": "eps1", "urls": [url_ep1, url_ep2, ...]}, ...].
+
+    Les entrées vides sont conservées (chaîne vide) pour que la position
+    corresponde bien au numéro d'épisode.
+    """
+    servers = []
+    for name, content in re.findall(r"var\s+(eps\w+)\s*=\s*\[(.*?)\];", js_text or "", re.DOTALL):
+        urls = [m[1].strip() for m in re.findall(r"""(['"])(.*?)\1""", content)]
+        urls = [u if u.startswith(("http://", "https://")) else "" for u in urls]
+        if any(urls):
+            servers.append({"name": name, "urls": urls})
+    return servers
+
+
+def get_anime_servers():
+    from bs4 import BeautifulSoup
+    import cloudscraper
+    from flask import jsonify, request
+
+    nom = (request.args.get("n") or "").strip()
+    saison = request.args.get("s") or "saison1"
+    version = request.args.get("v") or "vostfr"
+    if not nom:
+        return jsonify({"error": "paramètre n manquant"}), 400
+    try:
+        now = time.time()
+        cached = _INFO_CACHE.get(nom)
+        if cached and now - cached[0] < 600:
+            info = cached[1]
+        else:
+            info = backend.Cardinal.getInfoAnime(nom)
+            info = info if isinstance(info, list) else []
+            if info:
+                _INFO_CACHE[nom] = (now, info)
+
+        item = pick_season(info, saison)
+        if item is None or not item.get("url"):
+            return jsonify({"servers": [], "reason": "saison introuvable"})
+
+        link = build_link(item["url"], saison, version)
+        scraper = cloudscraper.create_scraper()
+        page = scraper.get(link)
+        soup = BeautifulSoup(page.text, "html.parser")
+        tag = soup.find("script", src=lambda s: s and "episodes.js" in s)
+        if not tag:
+            return jsonify({"servers": [], "reason": "episodes.js introuvable", "http": page.status_code})
+        js_link = tag.get("src", "").split('"')[0].split("'")[0]
+        js_text = scraper.get(f"{link.rstrip('/')}/{js_link.lstrip('/')}").text
+        return jsonify({"link": link, "servers": extract_servers(js_text)})
+    except Exception as exc:  # noqa: BLE001
+        log(f"getAnimeServers: {type(exc).__name__}: {exc}")
+        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 502
+
+
+Yui.app.add_url_rule("/api/getAnimeServers", "getAnimeServers", get_anime_servers)
 
 Config.IP, Config.PORT = HOST, PORT
 

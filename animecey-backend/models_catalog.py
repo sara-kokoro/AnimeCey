@@ -14,8 +14,10 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     Uuid,
     func,
@@ -54,3 +56,44 @@ class CatalogTitle(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class AnimeSeason(Base):
+    """Saisons / sagas d'un animé ouvert depuis le catalogue.
+
+    season_number : numéro séquentiel 1..N (ordre d'Anime-Sama) utilisé dans episodes.
+    api_season    : nom de la saison tel que TMCooper l'attend (paramètre s=).
+    label         : nom affiché ("Saga 1 (East Blue)", "Saison 2 Partie 1", "Film"...).
+    """
+
+    __tablename__ = "anime_seasons"
+    __table_args__ = (
+        UniqueConstraint("anime_id", "api_season", name="uq_anime_seasons_api"),
+        UniqueConstraint("anime_id", "season_number", name="uq_anime_seasons_number"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    anime_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("animes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    season_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    api_season: Mapped[str] = mapped_column(String(50), nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
+class EpisodeServer(Base):
+    """Un serveur de lecture (lecteur) disponible pour un épisode."""
+
+    __tablename__ = "episode_servers"
+    __table_args__ = (
+        UniqueConstraint("episode_id", "position", name="uq_episode_servers_position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    episode_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("episodes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str] = mapped_column(String(80), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    type: Mapped[str] = mapped_column(String(10), nullable=False, default="embed")

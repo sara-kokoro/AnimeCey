@@ -1,5 +1,5 @@
 import { useParams, Navigate, Link } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Heart, Play, Star, ArrowUpDown, Youtube, X, Loader2 } from "lucide-react";
@@ -10,6 +10,7 @@ import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { fetchAnime } from "@/api/animes";
 import { fetchEpisodes } from "@/api/episodes";
+import { ensureSeason, fetchSeasonLabels } from "@/api/catalog";
 import type { Language } from "@/types";
 
 export default function AnimeDetail() {
@@ -27,12 +28,37 @@ export default function AnimeDetail() {
   const [trailerOpen, setTrailerOpen] = useState(false);
 
   const lang = language ?? anime?.languages_available?.[0] ?? "VOSTFR";
+  const [preparing, setPreparing] = useState(false);
+  const requestedSeasons = useRef<Set<string>>(new Set());
+
+  const { data: seasonLabels = [] } = useQuery({
+    queryKey: ["season-labels", Number(id)],
+    queryFn: () => fetchSeasonLabels(Number(id)),
+    enabled: !!anime,
+  });
 
   const { data: episodes = [], isLoading: loadingEps } = useQuery({
     queryKey: ["episodes", Number(id), lang, season],
     queryFn: () => fetchEpisodes(Number(id), lang, season),
     enabled: !!anime,
+    refetchInterval: preparing ? 6000 : false,
   });
+
+  // Saison pas encore récupérée : on demande sa préparation, puis la liste se rafraîchit seule.
+  useEffect(() => {
+    if (!anime || loadingEps) return;
+    if (episodes.length > 0) {
+      if (preparing) setPreparing(false);
+      return;
+    }
+    if (seasonLabels.length === 0) return;
+    const key = `${lang}-${season}`;
+    if (requestedSeasons.current.has(key)) return;
+    requestedSeasons.current.add(key);
+    ensureSeason(Number(id), lang, season)
+      .then((r) => setPreparing(r.preparing))
+      .catch(() => setPreparing(false));
+  }, [anime, loadingEps, episodes.length, seasonLabels.length, lang, season, id, preparing]);
 
   if (loadingAnime) {
     return (
@@ -163,7 +189,7 @@ export default function AnimeDetail() {
               />
             </div>
           )}
-          {anime.type !== "film" && anime.seasons_count > 1 && (
+          {anime.type !== "film" && (anime.seasons_count > 1 || seasonLabels.length > 1) && (
             <div>
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold mb-1.5">
                 Saison
@@ -171,10 +197,14 @@ export default function AnimeDetail() {
               <ToggleGroup2
                 value={season}
                 onChange={(v) => setSeason(Number(v))}
-                options={Array.from({ length: anime.seasons_count }).map((_, i) => ({
-                  value: i + 1,
-                  label: `${i + 1}`,
-                }))}
+                options={
+                  seasonLabels.length > 0
+                    ? seasonLabels.map((s) => ({ value: s.number, label: s.label }))
+                    : Array.from({ length: anime.seasons_count }).map((_, i) => ({
+                        value: i + 1,
+                        label: `${i + 1}`,
+                      }))
+                }
               />
             </div>
           )}
@@ -190,7 +220,11 @@ export default function AnimeDetail() {
         {loadingEps ? (
           <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
         ) : sorted.length === 0 ? (
-          <p className="text-center text-muted-foreground font-body py-8">Aucun épisode disponible.</p>
+          <p className="text-center text-muted-foreground font-body py-8">
+            {preparing
+              ? "Préparation des épisodes en cours, cela peut prendre une à deux minutes."
+              : "Aucun épisode disponible."}
+          </p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
             {sorted.map((ep, i) => (

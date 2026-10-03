@@ -23,7 +23,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -106,8 +106,26 @@ async def _get_or_create_folder(
     return season_folder
 
 
+async def _shift_episode_numbers(db: AsyncSession, anime_id: int, language: LanguageEnum, season_number: int) -> None:
+    """Décale de +1 les numéros d'une saison (anciennes données numérotées à partir de 0).
+
+    Deux étapes (passage par des valeurs négatives) pour ne jamais violer la
+    contrainte d'unicité en cours de route.
+    """
+    scope = (Episode.anime_id == anime_id, Episode.language == language, Episode.season_number == season_number)
+    await db.execute(update(Episode).where(*scope).values(episode_number=-(Episode.episode_number + 1)))
+    await db.execute(update(Episode).where(*scope, Episode.episode_number < 0).values(episode_number=-Episode.episode_number))
+
+
 async def sync_source(source_id: int) -> dict:
     """Synchronise une source. À appeler sous verrou (voir sync_one / sync_all)."""
+    # Animés ouverts depuis le catalogue : numérotation, tous les serveurs, rafraîchissement
+    # économe. Tout est géré par services/catalog_episodes.py.
+    from services import catalog_episodes
+
+    if await catalog_episodes.is_managed(source_id):
+        return await catalog_episodes.sync_source(source_id)
+
     async with async_session() as db:
         src = await db.get(TmcooperSource, source_id)
         if src is None:
@@ -151,21 +169,29 @@ async def sync_source(source_id: int) -> dict:
         try:
             folder = await _get_or_create_folder(db, anime, language, season_number)
 
-            rows = (
-                await db.execute(
-                    select(Episode).where(
-                        Episode.anime_id == anime.id,
-                        Episode.language == language,
-                        Episode.season_number == season_number,
+            async def _load_existing() -> dict[int, Episode]:
+                found = (
+                    await db.execute(
+                        select(Episode).where(
+                            Episode.anime_id == anime.id,
+                            Episode.language == language,
+                            Episode.season_number == season_number,
+                        )
                     )
-                )
-            ).scalars().all()
-            existing = {ep.episode_number: ep for ep in rows}
+                ).scalars().all()
+                return {ep.episode_number: ep for ep in found}
+
+            existing = await _load_existing()
+            if 0 in existing:
+                # Anciennes données numérotées à partir de 0 : on les remet à partir de 1.
+                await _shift_episode_numbers(db, anime.id, language, season_number)
+                db.expire_all()
+                existing = await _load_existing()
 
             created = updated = cleared = 0
             seen: set[int] = set()
             for link in links:
-                number = link["episode"]
+                number = link["episode"] + 1  # TMCooper compte à partir de 0
                 seen.add(number)
                 ep = existing.get(number)
                 if ep is None:
