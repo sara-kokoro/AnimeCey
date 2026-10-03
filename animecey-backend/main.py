@@ -23,33 +23,77 @@ logger = logging.getLogger("animecey")
 
 
 async def _ensure_admin():
-    """Create default admin account if none exists."""
-    from sqlalchemy import select
+    """Crée le compte admin par défaut s'il n'existe aucun admin.
+
+    Ne doit JAMAIS empêcher l'application de démarrer : si le compte existe déjà
+    sous un autre rôle, ou si une autre instance l'a créé en même temps, on le
+    signale dans les logs et on continue.
+    """
+    from sqlalchemy import or_, select
+    from sqlalchemy.exc import IntegrityError
     from database import async_session
     from models import User, UserRole
     from auth import hash_password
 
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@animecey.app")
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    if not admin_password:
+        logger.warning(
+            "ADMIN_PASSWORD n'est pas défini : mot de passe par défaut utilisé. "
+            "Définis ADMIN_PASSWORD dans les variables d'environnement."
+        )
+        admin_password = "m@cabre"
+
     async with async_session() as db:
-        result = await db.execute(select(User).where(User.role == UserRole.admin))
-        if result.scalar_one_or_none() is None:
-            admin = User(
+        has_admin = (
+            await db.execute(select(User.id).where(User.role == UserRole.admin).limit(1))
+        ).first()
+        if has_admin:
+            logger.info("Admin account already exists, skipping.")
+            return
+
+        taken = (
+            await db.execute(
+                select(User.id, User.role)
+                .where(or_(User.username == "admin", User.email == admin_email))
+                .limit(1)
+            )
+        ).first()
+        if taken:
+            # On ne promeut jamais automatiquement ce compte : l'inscription est ouverte,
+            # il pourrait appartenir à quelqu'un d'autre.
+            logger.warning(
+                "Aucun compte n'a le rôle admin, mais le compte id=%s (rôle actuel : %s) occupe "
+                "déjà le nom « admin » ou l'email %s. Création ignorée. Si ce compte est le tien : "
+                "UPDATE users SET role='admin' WHERE id=%s;",
+                taken.id, getattr(taken.role, "value", taken.role), admin_email, taken.id,
+            )
+            return
+
+        db.add(
+            User(
                 username="admin",
-                email="admin@animecey.app",
-                password_hash=hash_password("m@cabre"),
+                email=admin_email,
+                password_hash=hash_password(admin_password),
                 role=UserRole.admin,
             )
-            db.add(admin)
+        )
+        try:
             await db.commit()
-            logger.info("Default admin created — admin@animecey.app")
-        else:
-            logger.info("Admin account already exists, skipping.")
+            logger.info("Default admin created — %s", admin_email)
+        except IntegrityError:
+            await db.rollback()
+            logger.info("Admin déjà créé en parallèle par une autre instance, on continue.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initialising database...")
     await init_db()
-    await _ensure_admin()
+    try:
+        await _ensure_admin()
+    except Exception:  # noqa: BLE001 — jamais bloquer le démarrage pour le compte admin
+        logger.exception("Vérification du compte admin impossible, l'application démarre quand même.")
 
     bot_running = False
     if settings.ENABLE_TELEGRAM_BOT and settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_API_ID:
