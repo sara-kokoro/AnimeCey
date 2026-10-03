@@ -30,7 +30,7 @@ from auth import get_current_user_optional
 from database import get_db
 from models import Anime, AnimeStatus, AnimeType, Episode, TmcooperSource, User
 from models_catalog import CatalogTitle
-from services import tmcooper, tmcooper_sync
+from services import catalog_sync, tmcooper, tmcooper_sync
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +150,9 @@ async def open_title(
 
         try:
             raw = await tmcooper.seasons(title.title)
+            if not raw and await catalog_sync.ensure_local_index():
+                # le fichier de recherche de TMCooper venait de disparaître (redémarrage)
+                raw = await tmcooper.seasons(title.title)
         except tmcooper.TmcooperError as exc:
             raise HTTPException(status_code=502, detail=f"Source indisponible: {exc}")
 

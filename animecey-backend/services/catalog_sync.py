@@ -35,6 +35,7 @@ Mettre ce fichier dans services/catalog_sync.py.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -59,7 +60,12 @@ RETRY_SEC = 300
 INDEX_TIMEOUT = 1800.0
 BATCH = 200
 
+# Fichier que TMCooper utilise pour ses recherches (mêmes conteneur et chemin que dans
+# animesama_launcher.py). Il disparaît à chaque redémarrage : on le recrée depuis la base.
+INDEX_PATH = os.path.join(os.getenv("ANIMESAMA_DIR", "/opt/AnimeSamaApi"), "src", "data", "json", "AnimeInfo.json")
+
 _lock = asyncio.Lock()
+_index_lock = asyncio.Lock()
 _task: asyncio.Task | None = None
 
 
@@ -103,6 +109,54 @@ async def _scrape(reset: bool) -> None:
         return
     # TMCooper renvoie le code HTTP (ex. 403) si Anime-Sama refuse la requête.
     raise tmcooper.TmcooperError(f"scraping refusé par la source: {result!r}")
+
+
+# ── Recréation du fichier de TMCooper depuis la base (0 requête proxy) ──
+
+
+async def _rebuild_index_from_db(domain: str) -> int:
+    """Réécrit AnimeInfo.json (même format que getAllAnime) à partir de catalog_titles."""
+    async with async_session() as db:
+        rows = (await db.execute(
+            select(CatalogTitle.title, CatalogTitle.external_id, CatalogTitle.poster_url)
+            .where(CatalogTitle.source == SOURCE)
+            .order_by(CatalogTitle.title)
+        )).all()
+    base = domain.rstrip("/")
+    data = [
+        {"title": title, "link": f"{base}/catalogue/{external_id}", "cover": poster or ""}
+        for title, external_id, poster in rows
+    ]
+    if not data:
+        return 0
+
+    def _write() -> None:
+        os.makedirs(os.path.dirname(INDEX_PATH), exist_ok=True)
+        tmp = INDEX_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False)
+        os.replace(tmp, INDEX_PATH)  # écriture atomique
+
+    await asyncio.to_thread(_write)
+    return len(data)
+
+
+async def ensure_local_index() -> bool:
+    """S'assure que TMCooper a son fichier de recherche ; le recrée depuis la base si besoin."""
+    async with _index_lock:
+        try:
+            domain = await _anime_sama_domain()
+            if not domain:
+                return False
+            if await _load_catalog() is not None:
+                return True
+            count = await _rebuild_index_from_db(domain)
+            if count:
+                logger.info("Catalogue: fichier TMCooper recréé depuis la base (%s titres, 0 requête proxy).", count)
+            return count > 0
+        except tmcooper.TmcooperError as exc:
+            logger.warning("Catalogue: fichier TMCooper non recréé: %s", exc)
+            return False
 
 
 # ── Mémoire du dernier scraping (survit aux redémarrages) ──────────────
@@ -238,8 +292,9 @@ async def sync_catalog() -> dict:
                         await _mark_scrape()  # base déjà remplie avant l'ajout de catalog_meta
                     logger.info(
                         "Catalogue: fichier TMCooper absent mais %s titres déjà en base : "
-                        "scraping évité (économie de requêtes).", in_db,
+                        "scraping évité, fichier recréé depuis la base.", in_db,
                     )
+                    await _rebuild_index_from_db(domain)
                     return {"ok": True, "total": in_db, "new": 0, "domain": domain}
                 await _scrape(reset=False)
                 items = await _load_catalog()
