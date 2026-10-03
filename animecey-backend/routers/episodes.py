@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import os
+import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +16,7 @@ from database import get_db
 from models import Episode, EpisodeLike, User
 from schemas import EpisodePublic, LikeResponse, StreamResponse
 from services import byse
+from services.stream_token import check_token, make_token
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +55,100 @@ async def _ensure_channel_msg(ep: Episode, db: AsyncSession):
         logger.warning("Failed to lazy-forward ep %s to channel: %s", ep.id, exc)
 
     return None
+
+
+_MSG_TTL = 600  # secondes de cache du message Telegram (évite un appel Telegram par Range)
+_msg_cache: dict[int, tuple[float, object]] = {}
+
+
+def _public_base(request: Request) -> str:
+    """URL publique du backend. Derrière le proxy, le schéma vu est parfois http:// :
+    on force https (sinon le navigateur bloque la vidéo en contenu mixte)."""
+    base = (os.getenv("PUBLIC_BASE_URL") or str(request.base_url)).rstrip("/")
+    if base.startswith("http://") and "localhost" not in base and "127.0.0.1" not in base:
+        base = "https://" + base[len("http://"):]
+    return base
+
+
+def _parse_range(header: str | None, size: int) -> tuple[int, int | None] | None:
+    """'bytes=a-b', 'bytes=a-' ou 'bytes=-n' -> (début, fin|None). None si invalide."""
+    if not header:
+        return 0, None
+    spec = header.replace("bytes=", "").strip().split(",")[0]
+    start_s, _, end_s = spec.partition("-")
+    try:
+        if start_s == "":  # suffixe : les n derniers octets
+            n = int(end_s)
+            return max(size - n, 0), None
+        start = int(start_s)
+        end = int(end_s) if end_s else None
+    except ValueError:
+        return None
+    if start >= size or (end is not None and end < start):
+        return None
+    return start, end
+
+
+async def _telegram_response(ep: Episode, request: Request, db: AsyncSession) -> StreamingResponse:
+    """Lit le fichier de l'épisode depuis le canal Telegram (MTProto), avec support de Range."""
+    from services.filestream import get_media_from_message, stream_media
+
+    if not ep.servcey1_file_id:
+        raise HTTPException(status_code=404, detail="Épisode introuvable")
+    try:
+        from bot.client import bot
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Bot Telegram non disponible")
+    if not bot.is_connected:
+        raise HTTPException(status_code=503, detail="Bot Telegram non connecté (ENABLE_TELEGRAM_BOT=true ?)")
+
+    msg_id = await _ensure_channel_msg(ep, db)
+    if not msg_id:
+        raise HTTPException(status_code=503, detail="Fichier introuvable dans le canal Telegram")
+
+    cached = _msg_cache.get(msg_id)
+    if cached and time.monotonic() - cached[0] < _MSG_TTL:
+        msg = cached[1]
+    else:
+        try:
+            msg = await bot.get_messages(settings.TELEGRAM_CHANNEL_ID, msg_id)
+        except Exception as exc:
+            logger.exception("Failed to get channel message %s", msg_id)
+            raise HTTPException(status_code=503, detail=f"Erreur Telegram: {exc}")
+        _msg_cache[msg_id] = (time.monotonic(), msg)
+
+    media = get_media_from_message(msg)
+    if not media:
+        _msg_cache.pop(msg_id, None)
+        raise HTTPException(status_code=404, detail="Fichier non trouvé dans le canal")
+
+    size = getattr(media, "file_size", 0) or 0
+    parsed = _parse_range(request.headers.get("range"), size)
+    if parsed is None:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+    range_start, range_end = parsed
+
+    try:
+        body, from_bytes, until_bytes, file_size, mime_type, file_name = await stream_media(
+            bot, msg, range_start, range_end
+        )
+    except Exception as exc:
+        _msg_cache.pop(msg_id, None)
+        logger.exception("FileStream error for ep %s", ep.id)
+        raise HTTPException(status_code=503, detail=f"Erreur streaming: {exc}")
+
+    if not (mime_type or "").startswith("video/"):
+        mime_type = "video/mp4"  # un MP4 envoyé comme document arrive parfois en octet-stream
+    headers = {
+        "Content-Type": mime_type,
+        "Content-Length": str(until_bytes - from_bytes + 1),
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "private, max-age=3600",
+    }
+    partial = request.headers.get("range") is not None
+    if partial:
+        headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"
+    return StreamingResponse(body, status_code=206 if partial else 200, headers=headers)
 
 
 @router.get("")
@@ -115,8 +212,8 @@ async def stream(
         return _tmcooper_response()
 
     if server in (None, "servcey1") and ep.servcey1_available and ep.servcey1_file_id:
-        base = str(request.base_url).rstrip("/")
-        return StreamResponse(url=f"{base}/api/episodes/{episode_id}/player")
+        token = make_token(episode_id)
+        return StreamResponse(url=f"{_public_base(request)}/api/episodes/{episode_id}/video?t={token}", type="mp4")
 
     if server in (None, "servcey2") and ep.servcey2_available and ep.servcey2_file_code:
         url = await byse.get_embed_url(ep.servcey2_file_code)
@@ -128,185 +225,23 @@ async def stream(
     raise HTTPException(status_code=404, detail="Aucune source de lecture disponible pour cet épisode")
 
 
-@router.get("/{episode_id}/player")
-async def player_page(
-    episode_id: int,
-    db: AsyncSession = Depends(get_db),
-):
-    """HTML5 video player page — loaded inside iframe from frontend."""
-    result = await db.execute(select(Episode).where(Episode.id == episode_id))
-    ep = result.scalar_one_or_none()
-    if not ep or not ep.servcey1_file_id:
-        raise HTTPException(status_code=404, detail="Épisode introuvable")
-
-    html = f"""<!DOCTYPE html>
-<html lang="fr"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AnimeCey Player</title>
-<style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{background:#000;width:100vw;height:100vh;overflow:hidden;display:flex;align-items:center;justify-content:center}}
-video{{width:100%;height:100%;object-fit:contain}}
-.msg{{color:#fff;font-family:system-ui,sans-serif;text-align:center;padding:2rem}}
-.msg p{{margin:0.3rem 0}}
-.sub{{font-size:0.85rem;opacity:0.6}}
-.spinner{{width:48px;height:48px;border:4px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite}}
-@keyframes spin{{to{{transform:rotate(360deg)}}}}
-</style></head><body>
-<div id="loading" class="msg"><div class="spinner" style="margin:0 auto 1rem"></div><p>Chargement...</p></div>
-<video id="player" controls autoplay playsinline style="display:none">
-<source src="/api/episodes/{episode_id}/video" type="video/mp4">
-</video>
-<script>
-var v=document.getElementById('player'),ld=document.getElementById('loading');
-v.addEventListener('loadeddata',function(){{ld.style.display='none';v.style.display='block'}});
-v.addEventListener('error',function(){{
-  ld.style.display='none';
-  document.body.innerHTML='<div class="msg"><p>Impossible de charger la vid\\u00e9o.</p><p class="sub">Essayez ServCey 2 pour une meilleure exp\\u00e9rience.</p></div>';
-}});
-</script>
-</body></html>"""
-    return HTMLResponse(html, headers={"X-Frame-Options": "ALLOWALL"})
-
-
 @router.get("/{episode_id}/video")
 async def video_proxy(
     episode_id: int,
     request: Request,
+    t: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Stream video from Telegram via MTProto FileStream (no size limit, supports Range)."""
-    result = await db.execute(select(Episode).where(Episode.id == episode_id))
-    ep = result.scalar_one_or_none()
-    if not ep or not ep.servcey1_file_id:
+    """Vidéo servie depuis Telegram (MTProto, sans limite de taille, avec Range).
+
+    Exige un jeton signé (?t=...) obtenu via /stream : l'id seul ne suffit pas.
+    """
+    if not check_token(episode_id, t):
+        raise HTTPException(status_code=403, detail="Lien expiré ou invalide")
+    ep = (await db.execute(select(Episode).where(Episode.id == episode_id))).scalar_one_or_none()
+    if not ep:
         raise HTTPException(status_code=404, detail="Épisode introuvable")
-
-    try:
-        from bot.client import bot
-    except ImportError:
-        raise HTTPException(status_code=503, detail="Bot Telegram non disponible")
-
-    if not bot.is_connected:
-        raise HTTPException(status_code=503, detail="Bot Telegram non connecté")
-
-    # Ensure we have a channel message for this episode
-    msg_id = await _ensure_channel_msg(ep, db)
-    if not msg_id:
-        raise HTTPException(
-            status_code=503,
-            detail="Impossible d'accéder au fichier Telegram. Essayez ServCey 2.",
-        )
-
-    # Fetch the message from the channel (fresh file_reference)
-    try:
-        msg = await bot.get_messages(settings.TELEGRAM_CHANNEL_ID, msg_id)
-    except Exception as exc:
-        logger.exception("Failed to get channel message %s", msg_id)
-        raise HTTPException(status_code=503, detail=f"Erreur Telegram: {exc}")
-
-    from services.filestream import get_media_from_message, stream_media
-
-    media = get_media_from_message(msg)
-    if not media:
-        raise HTTPException(status_code=404, detail="Fichier non trouvé dans le channel")
-
-    # Parse Range header
-    range_header = request.headers.get("range")
-    range_start = 0
-    range_end = None
-
-    if range_header:
-        range_spec = range_header.replace("bytes=", "").strip()
-        parts = range_spec.split("-")
-        range_start = int(parts[0]) if parts[0] else 0
-        range_end = int(parts[1]) if len(parts) > 1 and parts[1] else None
-
-    try:
-        body, from_bytes, until_bytes, file_size, mime_type, file_name = await stream_media(
-            bot, msg, range_start, range_end
-        )
-    except Exception as exc:
-        logger.exception("FileStream error for ep %s", episode_id)
-        raise HTTPException(status_code=503, detail=f"Erreur streaming: {exc}")
-
-    headers = {
-        "Content-Type": mime_type,
-        "Content-Range": f"bytes {from_bytes}-{until_bytes}/{file_size}",
-        "Content-Disposition": f'inline; filename="{file_name}"',
-        "Accept-Ranges": "bytes",
-    }
-
-    status = 206 if range_header else 200
-    if status == 200:
-        headers["Content-Length"] = str(file_size)
-
-    return StreamingResponse(body, status_code=status, headers=headers)
-
-
-@router.get("/{episode_id}/dl")
-async def download_file(
-    episode_id: int,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-):
-    """Download video from Telegram (attachment disposition)."""
-    result = await db.execute(select(Episode).where(Episode.id == episode_id))
-    ep = result.scalar_one_or_none()
-    if not ep or not ep.servcey1_file_id:
-        raise HTTPException(status_code=404, detail="Épisode introuvable")
-
-    try:
-        from bot.client import bot
-    except ImportError:
-        raise HTTPException(status_code=503, detail="Bot Telegram non disponible")
-
-    if not bot.is_connected:
-        raise HTTPException(status_code=503, detail="Bot Telegram non connecté")
-
-    msg_id = await _ensure_channel_msg(ep, db)
-    if not msg_id:
-        raise HTTPException(status_code=503, detail="Fichier non disponible")
-
-    try:
-        msg = await bot.get_messages(settings.TELEGRAM_CHANNEL_ID, msg_id)
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Erreur Telegram: {exc}")
-
-    from services.filestream import get_media_from_message, stream_media
-
-    media = get_media_from_message(msg)
-    if not media:
-        raise HTTPException(status_code=404, detail="Fichier non trouvé")
-
-    range_header = request.headers.get("range")
-    range_start = 0
-    range_end = None
-
-    if range_header:
-        range_spec = range_header.replace("bytes=", "").strip()
-        parts = range_spec.split("-")
-        range_start = int(parts[0]) if parts[0] else 0
-        range_end = int(parts[1]) if len(parts) > 1 and parts[1] else None
-
-    try:
-        body, from_bytes, until_bytes, file_size, mime_type, file_name = await stream_media(
-            bot, msg, range_start, range_end
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Erreur: {exc}")
-
-    headers = {
-        "Content-Type": mime_type,
-        "Content-Range": f"bytes {from_bytes}-{until_bytes}/{file_size}",
-        "Content-Disposition": f'attachment; filename="{file_name}"',
-        "Accept-Ranges": "bytes",
-    }
-
-    status = 206 if range_header else 200
-    if status == 200:
-        headers["Content-Length"] = str(file_size)
-
-    return StreamingResponse(body, status_code=status, headers=headers)
+    return await _telegram_response(ep, request, db)
 
 
 @router.post("/{episode_id}/like", response_model=LikeResponse)

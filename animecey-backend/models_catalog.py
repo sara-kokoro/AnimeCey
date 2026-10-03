@@ -79,6 +79,8 @@ class AnimeSeason(Base):
     season_number: Mapped[int] = mapped_column(Integer, nullable=False)
     api_season: Mapped[str] = mapped_column(String(50), nullable=False)
     label: Mapped[str] = mapped_column(String(255), nullable=False)
+    # saison | saga | film | oav | special | autre
+    kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
 
 
 class EpisodeServer(Base):

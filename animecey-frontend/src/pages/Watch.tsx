@@ -58,8 +58,9 @@ export default function Watch() {
 
   // Tous les serveurs TMCooper de l'épisode, puis les anciens ServCey s'ils existent.
   const serverOptions: { value: string; label: string }[] = [
-    ...servers.map((s) => ({ value: `srv:${s.id}`, label: s.label })),
+    // ServCey 1 (nos fichiers, sans pub) passe en premier quand il existe.
     ...(episode?.servcey1_available ? [{ value: "servcey1", label: "ServCey 1" }] : []),
+    ...servers.map((s) => ({ value: `srv:${s.id}`, label: s.label })),
     ...(episode?.servcey2_available ? [{ value: "servcey2", label: "ServCey 2" }] : []),
   ];
   if (!loadingServers && serverOptions.length === 0) {
@@ -83,9 +84,13 @@ export default function Watch() {
         : fetchAutoStream(Number(id)),
     enabled: !!id && !loadingServers && !selectedServer && selectedKey !== "",
     retry: false,
+    staleTime: 60 * 60 * 1000, // le lien signé vit 6 à 12 h : inutile de le redemander
+    refetchOnWindowFocus: false,
   });
 
   const playerUrl = selectedServer?.url ?? legacyStream?.url;
+  // Fichier direct (ServCey 1 via Telegram) : lecteur <video> natif, aucune pub.
+  const isDirectVideo = !selectedServer && (legacyStream as { type?: string } | undefined)?.type === "mp4";
   const noSource = !loadingServers && !playerUrl && !selectedServer && (legacyFetched || legacyError);
 
   if (loadingEp) {
@@ -122,7 +127,19 @@ export default function Watch() {
                 <Loader2 className="w-10 h-10 text-primary animate-spin" />
               </div>
             )}
-            {playerUrl ? (
+            {playerUrl && isDirectVideo ? (
+              <video
+                key={`${episode.id}-${selectedKey}-${lang}`}
+                src={playerUrl}
+                className="w-full h-full bg-black"
+                controls
+                autoPlay
+                playsInline
+                preload="metadata"
+                onLoadedData={() => setLoading(false)}
+                onError={() => setLoading(false)}
+              />
+            ) : playerUrl ? (
               <motion.iframe
                 key={`${episode.id}-${selectedKey}-${lang}`}
                 src={playerUrl}

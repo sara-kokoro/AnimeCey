@@ -3,9 +3,11 @@
 from bot.handlers.admin import register as register_admin
 from bot.handlers.upload import register as register_upload
 from bot.handlers.callbacks import register as register_callbacks
+from bot.handlers.quick_upload import register as register_quick_upload
 
 
 def register_all(bot):
+    register_quick_upload(bot)  # en premier : /anime et les envois par légende
     register_admin(bot)
     register_upload(bot)
     register_callbacks(bot)

@@ -18,7 +18,7 @@ export async function fetchEpisode(id: number): Promise<Episode> {
 export async function getStreamUrl(
   episodeId: number,
   server: "servcey1" | "servcey2",
-): Promise<{ url: string }> {
+): Promise<{ url: string; type?: string }> {
   const res = await api.get(`/episodes/${episodeId}/stream`, { params: { server } });
   return res.data;
 }

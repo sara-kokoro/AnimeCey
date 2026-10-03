@@ -37,6 +37,19 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS links_refreshed_at TIMESTAMPTZ"
         ))
+        # Type d'emplacement (saison, saga, film, oav...) pour les filtres et les icônes
+        await conn.execute(text(
+            "ALTER TABLE anime_seasons ADD COLUMN IF NOT EXISTS kind VARCHAR(16)"
+        ))
+        await conn.execute(text(
+            "UPDATE anime_seasons SET kind = CASE "
+            "WHEN api_season LIKE 'saison%' THEN 'saison' "
+            "WHEN api_season LIKE 'saga%' THEN 'saga' "
+            "WHEN api_season LIKE 'film%' THEN 'film' "
+            "WHEN api_season LIKE 'oav%' THEN 'oav' "
+            "WHEN api_season LIKE 'special%' THEN 'special' "
+            "ELSE 'autre' END WHERE kind IS NULL"
+        ))
 
 
 async def get_db():

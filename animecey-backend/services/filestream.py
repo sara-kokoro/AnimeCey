@@ -130,33 +130,31 @@ async def yield_file(
     media_session = await _get_media_session(client, fid.dc_id)
     location = _get_location(fid)
 
-    current_part = 1
     r = await media_session.send(
         raw.functions.upload.GetFile(location=location, offset=offset, limit=chunk_sz)
     )
+    if not isinstance(r, raw.types.upload.File):
+        return
 
-    if isinstance(r, raw.types.upload.File):
-        while current_part <= part_count:
-            chunk = r.bytes
-            if not chunk:
-                break
+    for current_part in range(1, part_count + 1):
+        chunk = r.bytes
+        if not chunk:
+            break
 
-            if part_count == 1:
-                yield chunk[first_part_cut:last_part_cut]
-                break
+        if part_count == 1:
+            yield chunk[first_part_cut:last_part_cut]
+        elif current_part == 1:
+            yield chunk[first_part_cut:]
+        elif current_part == part_count:
+            yield chunk[:last_part_cut]  # CORRECTIF : avant, le dernier morceau n'était pas coupé
+        else:
+            yield chunk
 
-            if current_part == 1:
-                yield chunk[first_part_cut:]
-            elif current_part <= part_count:
-                yield chunk
-
+        if current_part < part_count:
             offset += chunk_sz
             r = await media_session.send(
-                raw.functions.upload.GetFile(
-                    location=location, offset=offset, limit=chunk_sz
-                )
+                raw.functions.upload.GetFile(location=location, offset=offset, limit=chunk_sz)
             )
-            current_part += 1
 
 
 async def stream_media(
@@ -179,15 +177,18 @@ async def stream_media(
         raise ValueError("File size is 0 — cannot stream")
 
     from_bytes = range_start
-    until_bytes = range_end if range_end else file_size - 1
+    until_bytes = range_end if range_end is not None else file_size - 1
     until_bytes = min(until_bytes, file_size - 1)
+    if from_bytes < 0 or from_bytes > until_bytes:
+        raise ValueError("range invalide")
 
     req_length = until_bytes - from_bytes + 1
     chunk_sz = _chunk_size(req_length)
     offset = _offset_fix(from_bytes, chunk_sz)
     first_part_cut = from_bytes - offset
     last_part_cut = (until_bytes % chunk_sz) + 1
-    part_count = math.ceil(req_length / chunk_sz)
+    # CORRECTIF : nombre de blocs réellement touchés (une petite plage peut chevaucher 2 blocs)
+    part_count = until_bytes // chunk_sz - offset // chunk_sz + 1
 
     body = yield_file(client, msg, offset, first_part_cut, last_part_cut, part_count, chunk_sz)
     return body, from_bytes, until_bytes, file_size, mime_type, file_name
