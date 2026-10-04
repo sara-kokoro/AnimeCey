@@ -41,6 +41,7 @@ CURRENT_TTL = 3 * 3600  # /anime reste actif 3 h
 _db_lock = asyncio.Lock()          # évite deux créations d'emplacement en même temps (envois groupés)
 _job_lock = asyncio.Semaphore(1)   # un seul téléchargement + conversion à la fois
 _current_anime: dict[int, tuple[int, float]] = {}  # admin_id -> (anime_id, horodatage)
+_tasks: set[asyncio.Task] = set()      # références aux traitements en cours (évite qu'ils soient ramassés)
 
 
 class _Stop(Exception):
@@ -209,10 +210,7 @@ def register(bot: Client):
         _current_anime[uid] = (row.id, time.time())
         await message.reply(f"✅ Animé fixé : {row.title} (3 h). Envoie tes fichiers.")
 
-    @bot.on_message(filters.private & (filters.video | filters.document), group=-1)
-    async def handle_media(client: Client, message: Message):
-        if not message.from_user or not is_admin(message.from_user.id) or not _is_video(message):
-            return
+    async def _process(client: Client, message: Message):
         media = message.video or message.document
         fname = getattr(media, "file_name", None) or ""
 
@@ -246,6 +244,8 @@ def register(bot: Client):
                         f"Pas assez de disque pour convertir ({size // 2**20} Mo, il reste {free // 2**20} Mo). "
                         "Convertis-le en MP4 sur ton PC (ffmpeg -i in.mkv -c copy -movflags +faststart out.mp4) et renvoie-le."
                     )
+                if _job_lock.locked():
+                    await status.edit_text("⏳ En file d'attente (un fichier est en cours de conversion)…")
                 async with _job_lock:
                     with tempfile.TemporaryDirectory(dir=TMP_DIR) as tmp:
                         await status.edit_text("⬇️ Téléchargement…")
@@ -280,4 +280,14 @@ def register(bot: Client):
         except Exception as exc:  # noqa: BLE001
             logger.exception("envoi d'épisode en échec")
             await status.edit_text(f"❌ Erreur : {exc}")
+
+    @bot.on_message(filters.private & (filters.video | filters.document), group=-1)
+    async def handle_media(client: Client, message: Message):
+        if not message.from_user or not is_admin(message.from_user.id) or not _is_video(message):
+            return
+        # Traitement en tâche de fond : sinon les fichiers en attente occupent tous les
+        # « workers » du bot et il ne répond plus aux autres commandes.
+        task = asyncio.create_task(_process(client, message))
+        _tasks.add(task)
+        task.add_done_callback(_tasks.discard)
         raise StopPropagation  # empêche l'ancien système /upload de retraiter le fichier

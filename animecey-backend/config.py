@@ -78,7 +78,7 @@ class _Settings:
     TMCOOPER_SYNC_DELAY_SEC: float = float(os.getenv("TMCOOPER_SYNC_DELAY_SEC", "1.5"))
 
     # Ancien système d'upload Telegram (désactivé par défaut)
-    ENABLE_TELEGRAM_BOT: bool = os.getenv("ENABLE_TELEGRAM_BOT", "false").lower() in ("true", "1", "yes")
+    ENABLE_TELEGRAM_BOT: bool = os.getenv("ENABLE_TELEGRAM_BOT", "true").lower() in ("true", "1", "yes")
 
     # Debug — false by default in production
     DEBUG: bool = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")

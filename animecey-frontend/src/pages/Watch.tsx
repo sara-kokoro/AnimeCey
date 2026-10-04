@@ -21,6 +21,7 @@ export default function Watch() {
   const [language, setLanguage] = useState<Language | null>(null);
   const [liked, setLiked] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [langNotice, setLangNotice] = useState<string | null>(null);
 
   const { data: episode, isLoading: loadingEp } = useQuery({
     queryKey: ["episode", Number(id)],
@@ -37,6 +38,28 @@ export default function Watch() {
 
   const lang = (language ?? episode?.language ?? "VOSTFR") as Language;
   const seasonNum = episode?.season_number ?? 1;
+
+  // Changer de langue = ouvrir le même épisode dans l'autre langue (autre ligne en base).
+  const switchLanguage = async (l: Language) => {
+    setLangNotice(null);
+    if (!episode || !animeId || l === episode.language) {
+      setLanguage(l);
+      return;
+    }
+    try {
+      const list = await fetchEpisodes(animeId, l, seasonNum);
+      const match = list.find((e) => e.episode_number === episode.episode_number);
+      if (match) {
+        setLanguage(l);
+        setLoading(true);
+        navigate(`/watch/${match.id}`);
+      } else {
+        setLangNotice(`L'épisode ${episode.episode_number} n'est pas encore disponible en ${l}.`);
+      }
+    } catch {
+      setLangNotice("Impossible de changer de langue pour le moment.");
+    }
+  };
 
   const { data: episodes = [] } = useQuery({
     queryKey: ["episodes", animeId, lang, seasonNum],
@@ -180,9 +203,12 @@ export default function Watch() {
                   <ToggleGroup2
                     size="sm"
                     value={lang}
-                    onChange={(v) => setLanguage(v as Language)}
+                    onChange={(v) => switchLanguage(v as Language)}
                     options={anime.languages_available.map((l) => ({ value: l, label: l }))}
                   />
+                  {langNotice && (
+                    <p className="text-xs text-muted-foreground font-body mt-1.5">{langNotice}</p>
+                  )}
                 </div>
               )}
             </div>
