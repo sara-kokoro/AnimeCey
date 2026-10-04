@@ -176,9 +176,9 @@ export default function AnimeDetail() {
       </section>
 
       <main className="mx-auto max-w-7xl px-4 md:px-6 mt-8 pb-20">
-        <div className="flex flex-wrap items-center gap-4 mb-6">
+        <div className="flex flex-wrap items-center gap-4 mb-6 min-w-0">
           {anime.languages_available.length > 0 && (
-            <div>
+            <div className="min-w-0 max-w-full">
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold mb-1.5">
                 Langue
               </p>
@@ -190,7 +190,7 @@ export default function AnimeDetail() {
             </div>
           )}
           {anime.type !== "film" && (anime.seasons_count > 1 || seasonLabels.length > 1) && (
-            <div>
+            <div className="min-w-0 max-w-full">
               <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold mb-1.5">
                 Saison
               </p>
@@ -226,9 +226,9 @@ export default function AnimeDetail() {
               : "Aucun épisode disponible."}
           </p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 min-w-0">
             {sorted.map((ep, i) => (
-              <EpisodeCard key={ep.id} episode={ep} anime={anime} index={i} />
+              <EpisodeCard key={ep.id} episode={ep} variant="grid" />
             ))}
           </div>
         )}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -66,3 +67,29 @@ async def remux_to_mp4(src: str, dst: str) -> dict:
     except (TypeError, ValueError):
         pass
     return {"duration": duration, "subtitle_tracks": len(subs), "audio_reencoded": audio_codec == "aac"}
+
+
+async def extract_frame(path: str, duration: int | None) -> bytes | None:
+    """Une image JPEG (640 px de large) prise à ~20 % de la vidéo. None si impossible."""
+    if duration and duration > 120:
+        t = max(30, int(duration * 0.2))
+    elif duration:
+        t = int(duration * 0.3)
+    else:
+        t = 5
+    out = path + ".thumb.jpg"
+    try:
+        code, _, _ = await _run(
+            "ffmpeg", "-y", "-ss", str(t), "-i", path, "-frames:v", "1",
+            "-vf", "scale=640:-2", "-q:v", "4", out,
+            timeout=120,
+        )
+        if code != 0 or not os.path.exists(out):
+            return None
+        with open(out, "rb") as fh:
+            return fh.read() or None
+    except MediaError:
+        return None
+    finally:
+        if os.path.exists(out):
+            os.remove(out)

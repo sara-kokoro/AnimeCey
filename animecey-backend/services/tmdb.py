@@ -94,3 +94,20 @@ async def get_details(tmdb_id: int, media_type: str, db: AsyncSession, language:
 
     await _set_cache(db, cache_key, details)
     return details
+
+
+async def get_season(tmdb_id: int, season_number: int, db: AsyncSession, language: str = "fr-FR") -> dict:
+    """Détail d'une saison TMDB : liste des épisodes (titre, vignette, résumé)."""
+    cache_key = f"tmdb:season:{tmdb_id}:{season_number}:{language}"
+    cached = await _get_cache(db, cache_key, CACHE_DETAILS_TTL)
+    if cached is not None:
+        return cached
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{settings.TMDB_BASE_URL}/tv/{tmdb_id}/season/{season_number}",
+            params={"api_key": settings.TMDB_API_KEY, "language": language},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    await _set_cache(db, cache_key, data)
+    return data

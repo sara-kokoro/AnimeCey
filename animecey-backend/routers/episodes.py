@@ -244,6 +244,44 @@ async def video_proxy(
     return await _telegram_response(ep, request, db)
 
 
+_thumb_cache: dict[int, bytes] = {}
+
+
+@router.get("/{episode_id}/thumb")
+async def episode_thumb(episode_id: int, db: AsyncSession = Depends(get_db)):
+    """Vignette de l'épisode, lue depuis le canal Telegram puis gardée en cache."""
+    ep = (await db.execute(select(Episode).where(Episode.id == episode_id))).scalar_one_or_none()
+    if not ep or not ep.thumb_msg_id:
+        raise HTTPException(status_code=404, detail="Vignette introuvable")
+    data = _thumb_cache.get(ep.thumb_msg_id)
+    if data is None:
+        try:
+            from bot.client import bot
+        except ImportError:
+            raise HTTPException(status_code=503, detail="Bot Telegram non disponible")
+        if not bot.is_connected:
+            raise HTTPException(status_code=503, detail="Bot Telegram non connecté")
+        try:
+            msg = await bot.get_messages(settings.TELEGRAM_CHANNEL_ID, ep.thumb_msg_id)
+            if not msg or not msg.photo:
+                raise HTTPException(status_code=404, detail="Vignette introuvable")
+            buf = await bot.download_media(msg, in_memory=True)
+            data = buf.getvalue()
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("thumb ep %s", episode_id)
+            raise HTTPException(status_code=503, detail=f"Erreur Telegram: {exc}")
+        if len(_thumb_cache) >= 400:
+            _thumb_cache.pop(next(iter(_thumb_cache)))
+        _thumb_cache[ep.thumb_msg_id] = data
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=604800, immutable"},
+    )
+
+
 @router.post("/{episode_id}/like", response_model=LikeResponse)
 async def like_episode(
     episode_id: int,

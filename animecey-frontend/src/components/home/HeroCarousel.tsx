@@ -10,7 +10,7 @@ import type { Anime } from "@/types";
 const DURATION = 15000;
 
 export function HeroCarousel() {
-  const { data: featured = [] } = useQuery<Anime[]>({ queryKey: ["featured"], queryFn: fetchFeatured });
+  const { data: featured = [], isLoading } = useQuery<Anime[]>({ queryKey: ["featured"], queryFn: fetchFeatured });
   const [idx, setIdx] = useState(0);
   const [paused, setPaused] = useState(false);
 
@@ -21,9 +21,28 @@ export function HeroCarousel() {
   }, [idx, paused, featured.length]);
 
   if (featured.length === 0) {
+    // Chargement : bloc animé discret. Rien à afficher : bandeau de bienvenue.
     return (
-      <section className="relative w-full h-[70vh] md:h-[88vh] min-h-[520px] bg-background flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Chargement...</div>
+      <section className="relative w-full h-[56vh] md:h-[70vh] min-h-[380px] overflow-hidden bg-background flex items-end">
+        <div className="absolute inset-0 bg-gradient-to-br from-surface via-background to-background" />
+        <div className="absolute -top-24 -right-24 w-[420px] h-[420px] rounded-full bg-primary/10 blur-3xl" />
+        <div className={"relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 pb-14 md:pb-20 " + (isLoading ? "animate-pulse" : "")}>
+          <h1 className="font-display font-extrabold text-4xl md:text-6xl text-foreground leading-[1.05]">
+            Anime<span className="text-primary">Cey</span>
+          </h1>
+          <p className="mt-3 max-w-xl text-muted-foreground font-body md:text-lg">
+            {isLoading ? "Chargement des animés…" : "Tes animés en VF et VOSTFR, sans pub."}
+          </p>
+          {!isLoading && (
+            <Link
+              to="/catalogue"
+              className="mt-6 inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-body font-semibold hover:bg-primary-dim transition-colors"
+            >
+              <Play className="w-4 h-4 fill-current" />
+              Explorer le catalogue
+            </Link>
+          )}
+        </div>
       </section>
     );
   }
@@ -47,9 +66,9 @@ export function HeroCarousel() {
           className="absolute inset-0"
         >
           <img
-            src={anime.banner_url}
+            src={anime.banner_url || anime.poster_url}
             alt={anime.title}
-            className="w-full h-full object-cover"
+            className={"w-full h-full object-cover " + (anime.banner_url ? "" : "scale-110 blur-sm")}
             fetchPriority="high"
           />
           <div
@@ -70,7 +89,7 @@ export function HeroCarousel() {
             className="max-w-2xl"
           >
             <div className="flex flex-wrap gap-2 mb-4">
-              {anime.genres.slice(0, 3).map((g) => (
+              {(anime.genres ?? []).slice(0, 3).map((g) => (
                 <Badge2 key={g} variant="genre">
                   {g}
                 </Badge2>

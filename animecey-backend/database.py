@@ -37,6 +37,9 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS links_refreshed_at TIMESTAMPTZ"
         ))
+        await conn.execute(text(
+            "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS thumb_msg_id INTEGER"
+        ))
         # Type d'emplacement (saison, saga, film, oav...) pour les filtres et les icônes
         await conn.execute(text(
             "ALTER TABLE anime_seasons ADD COLUMN IF NOT EXISTS kind VARCHAR(16)"

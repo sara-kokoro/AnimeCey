@@ -140,6 +140,8 @@ class Episode(Base):
     servcey1_file_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     servcey1_msg_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     servcey1_available: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Message du canal Telegram qui contient la vignette de l'épisode (photo)
+    thumb_msg_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     servcey2_file_code: Mapped[str | None] = mapped_column(String(255), nullable=True)
     servcey2_available: Mapped[bool] = mapped_column(Boolean, default=False)
     # Lien de lecture résolu via TMCooper (rafraîchi régulièrement, il expire)

@@ -60,6 +60,11 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html, body {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'DM Sans', system-ui, -apple-system, sans-serif;

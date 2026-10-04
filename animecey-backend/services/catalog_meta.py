@@ -53,12 +53,24 @@ def _clean_html(text: str | None) -> str | None:
 
 
 def pick_tmdb(title: str, results: list[dict]) -> dict | None:
+    """Choisit la fiche TMDB la plus probable pour un ANIMÉ.
+
+    Un titre identique ne suffit pas (ex. « Demon Slayer » existe aussi comme film d'horreur de
+    2003) : on favorise fortement la catégorie Animation et la langue d'origine japonaise, et on
+    pénalise ce qui n'est ni l'un ni l'autre.
+    """
     best, best_score = None, 0.0
     for r in results or []:
         names = [r.get("name"), r.get("title"), r.get("original_name"), r.get("original_title")]
         score = max((_ratio(title, n) for n in names), default=0.0)
-        if 16 in (r.get("genre_ids") or []):  # catégorie Animation
-            score += 0.05
+        is_anim = 16 in (r.get("genre_ids") or [])
+        is_ja = r.get("original_language") == "ja"
+        if is_anim:
+            score += 0.30
+        if is_ja:
+            score += 0.10
+        if not is_anim and not is_ja:
+            score -= 0.35
         if score > best_score:
             best, best_score = r, score
     return best if best is not None and best_score >= MIN_RATIO else None
@@ -179,3 +191,34 @@ async def find_metadata(title: str, fallback_poster: str | None, db: AsyncSessio
     except Exception as exc:  # noqa: BLE001
         logger.warning("Métadonnées AniList indisponibles pour '%s': %s", title, exc)
     return merge_metadata(td, media, al, fallback_poster)
+
+
+async def apply_metadata(db: AsyncSession, anime, meta: dict) -> None:
+    """Applique une fiche (résultat de merge_metadata) sur un animé déjà en base."""
+    from sqlalchemy import select
+
+    from models import Anime, AnimeStatus
+
+    value = meta.get("anilist_id")
+    if value:  # colonne unique : on ignore si un autre animé a déjà cet id AniList
+        taken = (
+            await db.execute(select(Anime.id).where(Anime.anilist_id == value, Anime.id != anime.id))
+        ).first()
+        if taken:
+            meta = {**meta, "anilist_id": None}
+
+    for field in ("title_jp", "synopsis", "genres", "year", "poster_url", "banner_url", "trailer_url"):
+        if meta.get(field):
+            setattr(anime, field, meta[field])
+    if meta.get("score"):
+        anime.score = meta["score"]
+    if meta.get("status"):
+        try:
+            anime.status = AnimeStatus(meta["status"])
+        except ValueError:
+            pass
+    if meta.get("tmdb_id"):
+        anime.tmdb_id = meta["tmdb_id"]
+    if meta.get("anilist_id"):
+        anime.anilist_id = meta["anilist_id"]
+    await db.commit()

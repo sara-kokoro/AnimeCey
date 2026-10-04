@@ -11,8 +11,10 @@ pour « The Eminence in Shadow »).
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -37,6 +39,8 @@ logger = logging.getLogger(__name__)
 VIDEO_EXT = (".mkv", ".mp4", ".avi", ".webm", ".mov", ".ts", ".m4v")
 TMP_DIR = os.getenv("TELEGRAM_TMP_DIR", tempfile.gettempdir())
 CURRENT_TTL = 3 * 3600  # /anime reste actif 3 h
+# Mot à ajouter dans la légende pour remplacer un épisode déjà présent
+_REPLACE_RE = re.compile(r"(?<![\w])(remplacer|remplace|replace|[ée]craser)(?![\w])", re.I)
 
 _db_lock = asyncio.Lock()          # évite deux créations d'emplacement en même temps (envois groupés)
 _job_lock = asyncio.Semaphore(1)   # un seul téléchargement + conversion à la fois
@@ -113,6 +117,33 @@ async def _find_or_create_season(db, anime_id: int, key: str) -> AnimeSeason:
 # ── Étapes de traitement ────────────────────────────────────────────────
 
 
+async def _telegram_thumb(client: Client, media) -> bytes | None:
+    """Miniature déjà fournie par Telegram pour cette vidéo (fichiers MP4 transférés)."""
+    thumbs = getattr(media, "thumbs", None) or []
+    if not thumbs:
+        return None
+    try:
+        buf = await client.download_media(thumbs[-1].file_id, in_memory=True)
+        return buf.getvalue() if buf else None
+    except Exception:  # noqa: BLE001
+        logger.warning("miniature Telegram indisponible", exc_info=True)
+        return None
+
+
+async def _store_thumb(client: Client, data: bytes | None) -> int | None:
+    """Range la vignette dans le canal de stockage ; renvoie l'id du message (jamais d'exception)."""
+    if not data:
+        return None
+    try:
+        bio = io.BytesIO(data)
+        bio.name = "thumb.jpg"
+        m = await client.send_photo(settings.TELEGRAM_CHANNEL_ID, bio, caption="vignette")
+        return m.id
+    except Exception:  # noqa: BLE001
+        logger.warning("vignette non enregistrée", exc_info=True)
+        return None
+
+
 def _describe(p: Parsed) -> str:
     return f"titre={p.title or '?'} · emplacement={p.slot_key} · langue={p.lang or '?'} · épisode={p.episode if p.episode is not None else '?'}"
 
@@ -139,7 +170,15 @@ async def _prepare(admin_id: int, p: Parsed) -> dict:
             }
 
 
-async def _save_episode(ctx: dict, language: LanguageEnum, num: int, sent, duration: int | None) -> bool:
+async def _save_episode(
+    ctx: dict,
+    language: LanguageEnum,
+    num: int,
+    sent,
+    duration: int | None,
+    allow_replace: bool = False,
+    thumb_msg_id: int | None = None,
+) -> bool:
     sent_media = get_media_from_message(sent)
     if sent_media is None:
         raise RuntimeError("Le canal n'a renvoyé aucun média.")
@@ -160,6 +199,8 @@ async def _save_episode(ctx: dict, language: LanguageEnum, num: int, sent, durat
                 )
             ).scalars().first()
             replaced = bool(ep and ep.servcey1_file_id)
+            if replaced and not allow_replace:
+                raise _Stop(_duplicate_message(ctx, language, num))
             if ep is None:
                 ep = Episode(
                     anime_id=anime.id, folder_id=folder.id, episode_number=num,
@@ -171,8 +212,37 @@ async def _save_episode(ctx: dict, language: LanguageEnum, num: int, sent, durat
             ep.servcey1_available = True
             if duration:
                 ep.duration = duration
+            await db.flush()  # pour avoir ep.id
+            base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+            if thumb_msg_id and base:
+                ep.thumb_msg_id = thumb_msg_id
+                ep.thumbnail_url = f"{base}/api/episodes/{ep.id}/thumb?v={thumb_msg_id}"
             await db.commit()
             return replaced
+
+
+def _duplicate_message(ctx: dict, language: LanguageEnum, num: int) -> str:
+    return (
+        f"⚠️ Déjà existant : {ctx['anime_title']} — {ctx['season_label']} — {language.value} — épisode {num}.\n"
+        "Je n'ai rien modifié. Pour le remplacer, renvoie le fichier avec le mot REMPLACER dans la légende."
+    )
+
+
+async def _already_there(ctx: dict, language: LanguageEnum, num: int) -> bool:
+    """Un fichier ServCey 1 existe-t-il déjà pour cet épisode ?"""
+    async with async_session() as db:
+        found = (
+            await db.execute(
+                select(Episode.id).where(
+                    Episode.anime_id == ctx["anime_id"],
+                    Episode.language == language,
+                    Episode.season_number == ctx["season_number"],
+                    Episode.episode_number == num,
+                    Episode.servcey1_file_id.isnot(None),
+                )
+            )
+        ).first()
+    return found is not None
 
 
 def _is_video(message: Message) -> bool:
@@ -214,7 +284,9 @@ def register(bot: Client):
         media = message.video or message.document
         fname = getattr(media, "file_name", None) or ""
 
-        p = parse_caption(message.caption or "")
+        raw_caption = message.caption or ""
+        replace_ok = bool(_REPLACE_RE.search(raw_caption))
+        p = parse_caption(_REPLACE_RE.sub(" ", raw_caption))
         if p.episode is None or p.lang is None or p.title is None or p.slot_defaulted:
             p = merge_missing(p, parse_caption(os.path.splitext(fname)[0], is_filename=True))
 
@@ -227,15 +299,19 @@ def register(bot: Client):
 
             language = LanguageEnum.VF if p.lang == "VF" else LanguageEnum.VOSTFR
             ctx = await _prepare(message.from_user.id, p)
+            if not replace_ok and await _already_there(ctx, language, p.episode):
+                raise _Stop(_duplicate_message(ctx, language, p.episode))
             caption = f"{ctx['anime_title']} | {p.slot_key} | {p.lang} | {p.episode}"
 
             is_mp4 = fname.lower().endswith(".mp4") or (getattr(media, "mime_type", "") == "video/mp4")
             duration = getattr(media, "duration", None)
             subs = 0
+            thumb_bytes: bytes | None = None
 
             if is_mp4:
                 # Déjà au bon format : copie directe dans le canal (sans retélécharger).
                 sent = await message.copy(chat_id=settings.TELEGRAM_CHANNEL_ID, caption=caption)
+                thumb_bytes = await _telegram_thumb(client, media)
             else:
                 size = getattr(media, "file_size", 0) or 0
                 free = shutil.disk_usage(TMP_DIR).free
@@ -255,12 +331,16 @@ def register(bot: Client):
                         info = await media_service.remux_to_mp4(src, dst)
                         os.remove(src)
                         duration, subs = info["duration"], info["subtitle_tracks"]
+                        thumb_bytes = await media_service.extract_frame(dst, duration)
                         await status.edit_text("⬆️ Envoi dans le canal…")
                         sent = await client.send_document(
                             settings.TELEGRAM_CHANNEL_ID, dst, caption=caption, force_document=True
                         )
 
-            replaced = await _save_episode(ctx, language, p.episode, sent, duration)
+            thumb_msg_id = await _store_thumb(client, thumb_bytes)
+            replaced = await _save_episode(
+                ctx, language, p.episode, sent, duration, allow_replace=replace_ok, thumb_msg_id=thumb_msg_id
+            )
 
             notes = []
             if p.multi:

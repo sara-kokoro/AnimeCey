@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -11,6 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import Anime, Episode, LanguageEnum, WatchHistory
 from schemas import AnimePublic
+from services import anilist
+from services.caption_parser import norm
+
+logger = logging.getLogger(__name__)
+
+TOP_LIMIT = 10  # chaque rangée de l'accueil : 10 animés au maximum
 
 router = APIRouter()
 
@@ -127,11 +134,27 @@ async def featured(db: AsyncSession = Depends(get_db)):
         select(Anime).where(Anime.is_featured == True).order_by(func.random()).limit(8)
     )
     animes = list(result.scalars().all())
+    if not animes:
+        # Rien en vedette : on met en avant les tendances de la saison déjà sur le site,
+        # puis les derniers ajouts, pour que le grand bandeau ne reste jamais vide.
+        seasonal = await _seasonal_animes(db, "TRENDING_DESC") or []
+        animes = [a for a in seasonal if a.banner_url or a.poster_url][:6]
+        if len(animes) < 6:
+            taken = [a.id for a in animes] or [0]
+            more = (
+                await db.execute(
+                    select(Anime)
+                    .where(Anime.id.in_(select(distinct(Episode.anime_id))), Anime.id.notin_(taken))
+                    .where((Anime.banner_url.isnot(None)) | (Anime.poster_url.isnot(None)))
+                    .order_by(Anime.created_at.desc())
+                    .limit(6 - len(animes))
+                )
+            ).scalars().all()
+            animes.extend(more)
     return await _enrich_animes(db, animes)
 
 
-@router.get("/top-week")
-async def top_week(db: AsyncSession = Depends(get_db)):
+async def _top_week_by_views(db: AsyncSession):
     week_ago = datetime.now(timezone.utc) - timedelta(days=7)
     sub = (
         select(Episode.anime_id, func.count().label("cnt"))
@@ -139,7 +162,7 @@ async def top_week(db: AsyncSession = Depends(get_db)):
         .where(WatchHistory.watched_at >= week_ago)
         .group_by(Episode.anime_id)
         .order_by(func.count().desc())
-        .limit(12)
+        .limit(TOP_LIMIT)
         .subquery()
     )
     result = await db.execute(select(Anime).join(sub, Anime.id == sub.c.anime_id))
@@ -149,18 +172,17 @@ async def top_week(db: AsyncSession = Depends(get_db)):
 
 @router.get("/top-rated")
 async def top_rated(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Anime).order_by(Anime.score.desc()).limit(12))
+    result = await db.execute(select(Anime).order_by(Anime.score.desc()).limit(TOP_LIMIT))
     return await _enrich_animes(db, list(result.scalars().all()))
 
 
 @router.get("/latest")
 async def latest(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Anime).order_by(Anime.created_at.desc()).limit(12))
+    result = await db.execute(select(Anime).order_by(Anime.created_at.desc()).limit(TOP_LIMIT))
     return await _enrich_animes(db, list(result.scalars().all()))
 
 
-@router.get("/trending")
-async def trending(db: AsyncSession = Depends(get_db)):
+async def _trending_by_views(db: AsyncSession):
     month_ago = datetime.now(timezone.utc) - timedelta(days=30)
     sub = (
         select(Episode.anime_id, func.count().label("cnt"))
@@ -168,12 +190,119 @@ async def trending(db: AsyncSession = Depends(get_db)):
         .where(WatchHistory.watched_at >= month_ago)
         .group_by(Episode.anime_id)
         .order_by(func.count().desc())
-        .limit(12)
+        .limit(TOP_LIMIT)
         .subquery()
     )
     result = await db.execute(select(Anime).join(sub, Anime.id == sub.c.anime_id))
     animes = list(result.scalars().all())
     return await _enrich_animes(db, animes)
+
+
+async def _seasonal_animes(db: AsyncSession, sort: str) -> list[Anime] | None:
+    """Animés tendance de la saison en cours qui sont DÉJÀ sur le site (avec au moins un épisode),
+    du plus tendance au moins tendance. None si AniList est injoignable.
+
+    Ceux qui ne sont pas encore sur AnimeCey n'apparaissent pas : ils s'afficheront dès leur ajout.
+    """
+    try:
+        media = await anilist.seasonal(sort)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Tendances de saison indisponibles: %s", exc)
+        return None
+
+    by_id: dict[int, int] = {}      # id AniList -> rang
+    by_title: dict[str, int] = {}   # titre normalisé -> rang
+    for rank, m in enumerate(media):
+        by_id.setdefault(m["id"], rank)
+        t = m.get("title") or {}
+        for name in [t.get("romaji"), t.get("english"), t.get("native"), *(m.get("synonyms") or [])]:
+            key = norm(name)
+            if key:
+                by_title.setdefault(key, rank)
+
+    on_site = (
+        await db.execute(select(Anime).where(Anime.id.in_(select(distinct(Episode.anime_id)))))
+    ).scalars().all()
+
+    ranked: list[tuple[int, Anime]] = []
+    for a in on_site:
+        rank = by_id.get(a.anilist_id) if a.anilist_id else None
+        if rank is None:
+            for key in {norm(a.title), norm(a.title_jp)} - {""}:
+                if key in by_title:
+                    rank = by_title[key]
+                    break
+                if len(key) >= 6:  # « demonslayer » ⊂ « demonslayerkimetsunoyaiba »
+                    cands = [r for k, r in by_title.items() if k.startswith(key)]
+                    if cands:
+                        rank = min(cands)
+                        break
+        if rank is not None:
+            ranked.append((rank, a))
+    ranked.sort(key=lambda x: x[0])
+    return [a for _, a in ranked]
+
+
+async def _seasonal_on_site(db: AsyncSession, sort: str) -> list[dict] | None:
+    animes = await _seasonal_animes(db, sort)
+    if animes is None:
+        return None
+    return await _enrich_animes(db, animes[:TOP_LIMIT])
+
+
+async def _top_week_combined(db: AsyncSession) -> list[dict]:
+    """Les plus regardés sur AnimeCey cette semaine ; complétés (jusqu'à 10) par les plus tendance
+    de la saison ailleurs (AniList) qui sont déjà sur le site."""
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    rows = (
+        await db.execute(
+            select(Episode.anime_id, func.count().label("cnt"))
+            .join(WatchHistory, WatchHistory.episode_id == Episode.id)
+            .where(WatchHistory.watched_at >= week_ago)
+            .group_by(Episode.anime_id)
+            .order_by(func.count().desc())
+            .limit(TOP_LIMIT)
+        )
+    ).all()
+    ids = [r[0] for r in rows]
+    animes: list[Anime] = []
+    if ids:
+        by_id = {a.id: a for a in (await db.execute(select(Anime).where(Anime.id.in_(ids)))).scalars().all()}
+        animes = [by_id[i] for i in ids if i in by_id]
+
+    if len(animes) < TOP_LIMIT:
+        seasonal = await _seasonal_animes(db, "TRENDING_DESC")
+        taken = {a.id for a in animes}
+        for a in seasonal or []:
+            if a.id not in taken:
+                animes.append(a)
+                taken.add(a.id)
+            if len(animes) >= TOP_LIMIT:
+                break
+        if seasonal is None and len(animes) < TOP_LIMIT:  # AniList en panne : on complète avec les mieux notés
+            more = (
+                await db.execute(
+                    select(Anime)
+                    .where(Anime.id.in_(select(distinct(Episode.anime_id))), Anime.id.notin_(list(taken) or [0]))
+                    .order_by(Anime.score.desc())
+                    .limit(TOP_LIMIT - len(animes))
+                )
+            ).scalars().all()
+            animes.extend(more)
+    return await _enrich_animes(db, animes[:TOP_LIMIT])
+
+
+@router.get("/top-week")
+async def top_week(db: AsyncSession = Depends(get_db)):
+    """Top 10 de la semaine : d'abord les plus vus sur AnimeCey, puis les plus tendance ailleurs."""
+    return await _top_week_combined(db)
+
+
+@router.get("/trending")
+async def trending(db: AsyncSession = Depends(get_db)):
+    """Tendances = les plus populaires de la saison en cours qui sont sur le site (10 max)."""
+    found = await _seasonal_on_site(db, "POPULARITY_DESC")
+    return found if found is not None else (await _trending_by_views(db))[:TOP_LIMIT]
 
 
 @router.get("/{anime_id}")

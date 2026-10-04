@@ -1,4 +1,4 @@
-"""Admin commands: /start, /status, /cancel, /list, /ep."""
+"""Admin commands: /start, /help, /status, /cancel, /list, /ep."""
 
 from __future__ import annotations
 
@@ -19,21 +19,56 @@ def is_admin(user_id: int) -> bool:
     return user_id in settings.TELEGRAM_ADMIN_IDS
 
 
+HELP_TEXT = (
+    "Bienvenue sur le bot AnimeCey 👋\n"
+    "\n"
+    "📤 AJOUTER UN ÉPISODE\n"
+    "Envoie ou transfère la vidéo avec une légende. Elle peut être libre, elle doit contenir :\n"
+    "• le titre de l'animé\n"
+    "• la langue : VF ou VOSTFR (Multi = VOSTFR)\n"
+    "• le numéro de l'épisode\n"
+    "• la saison, la saga, le film ou l'OAV (sans rien : Saison 1)\n"
+    "\n"
+    "Exemples :\n"
+    "Naruto S01E05 VF\n"
+    "Black Clover Saison 2 Épisode 12 VOSTFR\n"
+    "One Piece Saga 1 (East Blue) — Épisode 6 [VF]\n"
+    "Demon Slayer Film 1 VF\n"
+    "\n"
+    "MP4 : copié tel quel. MKV : converti en MP4, un à la fois (patiente).\n"
+    "Les sous-titres VOSTFR doivent être incrustés dans la vidéo.\n"
+    "\n"
+    "♻️ DOUBLONS\n"
+    "Si l'épisode existe déjà, le bot répond « Déjà existant » et ne change rien.\n"
+    "Pour le remplacer, ajoute le mot REMPLACER dans la légende.\n"
+    "\n"
+    "🎯 /anime <n° ou titre>\n"
+    "Fixe l'animé pendant 3 h, quand la légende n'a pas le même titre que sur le site "
+    "(ex. « Kage no Jitsuryokusha » pour « The Eminence in Shadow »).\n"
+    "\n"
+    "🖼 /fiche <n°> [recherche]\n"
+    "Choisis la bonne fiche TMDB (affiche, synopsis, genres…). "
+    "Ex. /fiche 16 Kimetsu no Yaiba\n"
+    "\n"
+    "🎞 /vignettes <n°> [force]\n"
+    "Remplit les vignettes et les titres des épisodes depuis TMDB (fais /fiche avant si la fiche est fausse).\n"
+    "\n"
+    "🔎 /list <titre> — trouver le n° d'un animé\n"
+    "📂 /ep <n° dossier> — épisodes d'un dossier\n"
+    "📊 /status — statistiques\n"
+    "❓ /help — afficher ce message\n"
+    "\n"
+    "Le n° d'un animé est son ID affiché par /list."
+)
+
+
 def register(bot: Client):
 
-    @bot.on_message(filters.command("start") & filters.private)
+    @bot.on_message(filters.command(["start", "help"]) & filters.private)
     async def cmd_start(client: Client, message: Message):
-        if not is_admin(message.from_user.id):
+        if not message.from_user or not is_admin(message.from_user.id):
             return await message.reply("Accès non autorisé.")
-        await message.reply(
-            "Bienvenue sur le bot AnimeCey !\n\n"
-            "Commandes disponibles :\n"
-            "/upload {folder_id} — Uploader des épisodes\n"
-            "/list {titre} — Chercher un animé\n"
-            "/ep {folder_id} — Lister les épisodes d'un dossier\n"
-            "/status — Statistiques\n"
-            "/cancel — Annuler l'opération en cours"
-        )
+        await message.reply(HELP_TEXT)
 
     @bot.on_message(filters.command("status") & filters.private)
     async def cmd_status(client: Client, message: Message):

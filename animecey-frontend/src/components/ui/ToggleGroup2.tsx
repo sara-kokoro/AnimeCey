@@ -18,7 +18,7 @@ export function ToggleGroup2<T extends Val>({
   className,
 }: Props<T>) {
   return (
-    <div className={cn("no-scrollbar flex gap-2 overflow-x-auto", className)}>
+    <div className={cn("no-scrollbar flex gap-2 overflow-x-auto max-w-full min-w-0", className)}>
       {options.map((opt) => {
         const active = opt.value === value;
         return (

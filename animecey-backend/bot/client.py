@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pyrogram.utils as _pg_utils
 from pyrogram import Client
+from pyrogram.enums import ParseMode
 
 from config import settings
 
@@ -42,4 +43,6 @@ bot = Client(
     api_hash=settings.TELEGRAM_API_HASH,
     bot_token=settings.TELEGRAM_BOT_TOKEN,
     in_memory=True,  # No session file — avoids stale auth key issues on Koyeb restart
+    # Texte brut : sinon Pyrogram prend « <id> » pour une balise HTML et l'efface du message.
+    parse_mode=ParseMode.DISABLED,
 )

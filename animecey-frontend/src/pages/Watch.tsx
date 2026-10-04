@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Heart, Loader2 } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
+import { ServCeyPlayer } from "@/components/player/ServCeyPlayer";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
 import { fetchEpisode, fetchEpisodes, getStreamUrl } from "@/api/episodes";
@@ -145,22 +146,21 @@ export default function Watch() {
       <div className="pt-16 mx-auto max-w-[1500px] px-0 md:px-6 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
         <div className="min-w-0">
           <div className="relative w-full aspect-video bg-black md:rounded-2xl overflow-hidden">
-            {loading && !noSource && (
+            {loading && !noSource && !isDirectVideo && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <Loader2 className="w-10 h-10 text-primary animate-spin" />
               </div>
             )}
             {playerUrl && isDirectVideo ? (
-              <video
+              <ServCeyPlayer
                 key={`${episode.id}-${selectedKey}-${lang}`}
                 src={playerUrl}
-                className="w-full h-full bg-black"
-                controls
-                autoPlay
-                playsInline
-                preload="metadata"
-                onLoadedData={() => setLoading(false)}
-                onError={() => setLoading(false)}
+                title={anime?.title ?? "Anime"}
+                subtitle={`${seasonLabel} — Épisode ${episode.episode_number} · ${episode.language}`}
+                storageKey={String(episode.id)}
+                onReady={() => setLoading(false)}
+                hasNext={!!next}
+                onNext={() => next && navigate(`/watch/${next.id}`)}
               />
             ) : playerUrl ? (
               <motion.iframe
@@ -182,9 +182,9 @@ export default function Watch() {
             )}
           </div>
 
-          <div className="px-4 md:px-0 mt-4 flex flex-col md:flex-row gap-4 md:items-end md:justify-between">
-            <div className="flex flex-wrap gap-5">
-              <div>
+          <div className="px-4 md:px-0 mt-4 flex flex-col md:flex-row gap-4 md:items-end md:justify-between min-w-0">
+            <div className="flex flex-wrap gap-5 min-w-0 max-w-full">
+              <div className="min-w-0 max-w-full">
                 <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold mb-1.5">
                   Serveur
                 </p>
@@ -196,7 +196,7 @@ export default function Watch() {
                 />
               </div>
               {anime?.languages_available && anime.languages_available.length > 0 && (
-                <div>
+                <div className="min-w-0 max-w-full">
                   <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold mb-1.5">
                     Langue
                   </p>
