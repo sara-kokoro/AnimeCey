@@ -22,7 +22,41 @@ export function HeroCarousel() {
     return () => clearTimeout(t);
   }, [idx, paused, featured.length]);
 
-  if (featured.length === 0) {
+  // Watchlist : connexion requise ; un clic ajoute, un second clic retire.
+  const navigate = useNavigate();
+  const isAuthenticated = useAuthStore((st) => st.isAuthenticated);
+  const [listed, setListed] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!isAuthenticated) { setListed(new Set()); return; }
+    fetchWatchlist()
+      .then((rows: { anime: { id: number } }[]) => setListed(new Set(rows.map((r) => r.anime.id))))
+      .catch(() => undefined);
+  }, [isAuthenticated]);
+  const anime = featured.length > 0 ? featured[idx % featured.length] : undefined;
+  const inList = anime ? listed.has(anime.id) : false;
+
+  const toggleWatchlist = async () => {
+    if (!anime) return;
+    if (!isAuthenticated) { navigate("/auth"); return; }
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (inList) await removeFromWatchlist(anime.id);
+      else await addToWatchlist(anime.id, "planned");
+      setListed((cur) => {
+        const next = new Set(cur);
+        if (inList) next.delete(anime.id); else next.add(anime.id);
+        return next;
+      });
+    } catch {
+      /* échec réseau : l'état reste inchangé */
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!anime) {
     // Chargement : bloc animé discret. Rien à afficher : bandeau de bienvenue.
     return (
       <section className="relative w-full h-[56vh] md:h-[70vh] min-h-[380px] overflow-hidden bg-background flex items-end">
@@ -48,39 +82,6 @@ export function HeroCarousel() {
       </section>
     );
   }
-
-  const anime = featured[idx % featured.length];
-  // Watchlist : connexion requise ; un clic ajoute, un second clic retire.
-  const navigate = useNavigate();
-  const isAuthenticated = useAuthStore((st) => st.isAuthenticated);
-  const [listed, setListed] = useState<Set<number>>(new Set());
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (!isAuthenticated) { setListed(new Set()); return; }
-    fetchWatchlist()
-      .then((rows: { anime: { id: number } }[]) => setListed(new Set(rows.map((r) => r.anime.id))))
-      .catch(() => undefined);
-  }, [isAuthenticated]);
-  const inList = listed.has(anime.id);
-  const toggleWatchlist = async () => {
-    if (!isAuthenticated) { navigate("/auth"); return; }
-    if (busy) return;
-    setBusy(true);
-    try {
-      if (inList) await removeFromWatchlist(anime.id);
-      else await addToWatchlist(anime.id, "planned");
-      setListed((cur) => {
-        const next = new Set(cur);
-        if (inList) next.delete(anime.id); else next.add(anime.id);
-        return next;
-      });
-    } catch {
-      /* échec réseau : l'état reste inchangé */
-    } finally {
-      setBusy(false);
-    }
-  };
-
 
   return (
     <section
