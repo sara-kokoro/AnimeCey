@@ -32,8 +32,8 @@ class _Settings:
     # Telegram Bot
     TELEGRAM_API_ID: int = int(os.getenv("TELEGRAM_API_ID", "37641587"))
     TELEGRAM_API_HASH: str = os.getenv("TELEGRAM_API_HASH", "9bce1167e828939f39452795e56202a9")
-    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "8850901579:AAH4RBTLC2itmwMMQ3Bca4KI_tc8ZkuLIUU")
-    TELEGRAM_CHANNEL_ID: int = int(os.getenv("TELEGRAM_CHANNEL_ID", "-1003702483523"))
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "8732815098:AAGwppoI115Z7Y7p5McnW2BN-LanwJpvsOY")
+    TELEGRAM_CHANNEL_ID: int = int(os.getenv("TELEGRAM_CHANNEL_ID", "-1003340962000"))
     TELEGRAM_ADMIN_IDS: List[int] = _csv_to_int_list(
         os.getenv("TELEGRAM_ADMIN_IDS", "8467461906")
     )
@@ -78,7 +78,7 @@ class _Settings:
     TMCOOPER_SYNC_DELAY_SEC: float = float(os.getenv("TMCOOPER_SYNC_DELAY_SEC", "1.5"))
 
     # Ancien système d'upload Telegram (désactivé par défaut)
-    ENABLE_TELEGRAM_BOT: bool = os.getenv("ENABLE_TELEGRAM_BOT", "true").lower() in ("true", "1", "yes")
+    ENABLE_TELEGRAM_BOT: bool = os.getenv("ENABLE_TELEGRAM_BOT", "false").lower() in ("true", "1", "yes")
 
     # Debug — false by default in production
     DEBUG: bool = os.getenv("DEBUG", "false").lower() in ("true", "1", "yes")

@@ -226,9 +226,13 @@ export default function AnimeDetail() {
               : "Aucun épisode disponible."}
           </p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4 min-w-0">
-            {sorted.map((ep, i) => (
-              <EpisodeCard key={ep.id} episode={ep} variant="grid" />
+          <div className="flex flex-col gap-1 md:gap-2 min-w-0 max-w-4xl">
+            {sorted.map((ep) => (
+              <EpisodeCard
+                key={ep.id}
+                episode={ep}
+                seasonLabel={seasonLabels.find((s) => s.number === ep.season_number)?.label}
+              />
             ))}
           </div>
         )}

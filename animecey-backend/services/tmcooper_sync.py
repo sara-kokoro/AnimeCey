@@ -168,12 +168,15 @@ async def sync_source(source_id: int) -> dict:
 
         try:
             folder = await _get_or_create_folder(db, anime, language, season_number)
+            # Ids lus maintenant : après db.expire_all() (plus bas), lire anime.id ou folder.id
+            # relancerait une requête hors contexte async (MissingGreenlet).
+            anime_id, folder_id = anime.id, folder.id
 
             async def _load_existing() -> dict[int, Episode]:
                 found = (
                     await db.execute(
                         select(Episode).where(
-                            Episode.anime_id == anime.id,
+                            Episode.anime_id == anime_id,
                             Episode.language == language,
                             Episode.season_number == season_number,
                         )
@@ -184,7 +187,7 @@ async def sync_source(source_id: int) -> dict:
             existing = await _load_existing()
             if 0 in existing:
                 # Anciennes données numérotées à partir de 0 : on les remet à partir de 1.
-                await _shift_episode_numbers(db, anime.id, language, season_number)
+                await _shift_episode_numbers(db, anime_id, language, season_number)
                 db.expire_all()
                 existing = await _load_existing()
 
@@ -197,8 +200,8 @@ async def sync_source(source_id: int) -> dict:
                 if ep is None:
                     db.add(
                         Episode(
-                            anime_id=anime.id,
-                            folder_id=folder.id,
+                            anime_id=anime_id,
+                            folder_id=folder_id,
                             episode_number=number,
                             language=language,
                             season_number=season_number,

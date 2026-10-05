@@ -282,6 +282,29 @@ async def episode_thumb(episode_id: int, db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.get("/{episode_id}/like", response_model=LikeResponse)
+async def like_status(
+    episode_id: int,
+    request: Request,
+    user: User | None = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    """L'épisode est-il déjà aimé par ce visiteur (compte connecté, sinon son adresse IP) ?"""
+    ep = (await db.execute(select(Episode).where(Episode.id == episode_id))).scalar_one_or_none()
+    if not ep:
+        raise HTTPException(status_code=404, detail="Épisode introuvable")
+    if user:
+        q = select(EpisodeLike.id).where(EpisodeLike.episode_id == episode_id, EpisodeLike.user_id == user.id)
+    else:
+        q = select(EpisodeLike.id).where(
+            EpisodeLike.episode_id == episode_id,
+            EpisodeLike.ip_address == get_client_ip(request),
+            EpisodeLike.user_id.is_(None),
+        )
+    liked = (await db.execute(q)).first() is not None
+    return LikeResponse(liked=liked, likes_count=ep.likes_count)
+
+
 @router.post("/{episode_id}/like", response_model=LikeResponse)
 async def like_episode(
     episode_id: int,

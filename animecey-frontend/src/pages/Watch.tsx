@@ -1,5 +1,5 @@
 import { useParams, Navigate, Link, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Heart, Loader2 } from "lucide-react";
@@ -9,7 +9,7 @@ import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { ServCeyPlayer } from "@/components/player/ServCeyPlayer";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
-import { fetchEpisode, fetchEpisodes, getStreamUrl } from "@/api/episodes";
+import { fetchEpisode, fetchEpisodes, fetchLikeStatus, getStreamUrl, likeEpisode, unlikeEpisode } from "@/api/episodes";
 import { fetchAnime } from "@/api/animes";
 import { fetchAutoStream, fetchEpisodeServers, fetchSeasonLabels } from "@/api/catalog";
 import type { Language } from "@/types";
@@ -21,6 +21,7 @@ export default function Watch() {
   const [serverKey, setServerKey] = useState<string | null>(null);
   const [language, setLanguage] = useState<Language | null>(null);
   const [liked, setLiked] = useState(false);
+  const [likes, setLikes] = useState(0);
   const [loading, setLoading] = useState(true);
   const [langNotice, setLangNotice] = useState<string | null>(null);
 
@@ -29,6 +30,39 @@ export default function Watch() {
     queryFn: () => fetchEpisode(Number(id)),
     enabled: !!id,
   });
+
+  // Le cœur : on lit l'état enregistré (compte ou adresse IP), puis on enregistre chaque clic.
+  useEffect(() => {
+    if (!episode) return;
+    setLikes(episode.likes_count);
+    setLiked(false);
+    let cancelled = false;
+    fetchLikeStatus(episode.id)
+      .then((r) => {
+        if (cancelled) return;
+        setLiked(r.liked);
+        setLikes(r.likes_count);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [episode?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleLike = async () => {
+    if (!episode) return;
+    const before = { liked, likes };
+    setLiked(!liked);
+    setLikes(Math.max(0, likes + (liked ? -1 : 1)));
+    try {
+      const r = liked ? await unlikeEpisode(episode.id) : await likeEpisode(episode.id);
+      setLiked(r.liked);
+      setLikes(r.likes_count);
+    } catch {
+      setLiked(before.liked);
+      setLikes(before.likes);
+    }
+  };
 
   const animeId = episode?.anime_id;
   const { data: anime } = useQuery({
@@ -244,11 +278,11 @@ export default function Watch() {
               </p>
             </div>
             <button
-              onClick={() => setLiked(!liked)}
+              onClick={toggleLike}
               className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold hover:border-primary/40 transition-colors"
             >
               <Heart className={`w-4 h-4 ${liked ? "fill-primary text-primary" : ""}`} />
-              {episode.likes_count + (liked ? 1 : 0)}
+              {likes}
             </button>
           </div>
 

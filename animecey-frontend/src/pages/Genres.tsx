@@ -13,6 +13,35 @@ const ALL_GENRES = [
   "Psychologique", "Ecchi",
 ];
 
+// Genre affiché -> morceaux de texte reconnus dans les genres enregistrés (français TMDB, anglais AniList).
+const GENRE_ALIASES: Record<string, string[]> = {
+  action: ["action"],
+  aventure: ["aventure", "adventure"],
+  "comédie": ["comédie", "comedie", "comedy"],
+  drame: ["drame", "drama"],
+  fantasy: ["fantasy", "fantastique"],
+  horreur: ["horreur", "horror"],
+  "mystère": ["mystère", "mystere", "mystery"],
+  romance: ["romance", "romantique"],
+  "sci-fi": ["sci-fi", "science-fiction", "science fiction"],
+  shonen: ["shonen", "shōnen"],
+  seinen: ["seinen"],
+  "slice of life": ["slice of life", "tranche de vie"],
+  sports: ["sport"],
+  surnaturel: ["surnaturel", "supernatural"],
+  thriller: ["thriller", "suspense"],
+  mecha: ["mecha"],
+  isekai: ["isekai"],
+  musique: ["musique", "music"],
+  psychologique: ["psychologique", "psychological"],
+  ecchi: ["ecchi"],
+};
+
+function hasGenre(animeGenres: string[] | undefined, genre: string): boolean {
+  const parts = GENRE_ALIASES[genre.toLowerCase()] ?? [genre.toLowerCase()];
+  return (animeGenres ?? []).some((ag) => parts.some((p) => ag.toLowerCase().includes(p)));
+}
+
 export default function Genres() {
   const { data, isLoading } = useQuery({
     queryKey: ["animes-for-genres"],
@@ -24,7 +53,7 @@ export default function Genres() {
 
   const genresWithCount = ALL_GENRES.map((g) => ({
     name: g,
-    count: animes.filter((a) => a.genres?.some((ag: string) => ag.toLowerCase() === g.toLowerCase())).length,
+    count: animes.filter((a) => hasGenre(a.genres, g)).length,
   })).sort((a, b) => b.count - a.count);
 
   return (

@@ -20,7 +20,10 @@ import tempfile
 import time
 from difflib import SequenceMatcher
 
+from dataclasses import replace
+
 from pyrogram import Client, StopPropagation, filters
+from pyrogram.errors import FloodWait
 from pyrogram.types import Message
 from sqlalchemy import select
 
@@ -45,6 +48,7 @@ _REPLACE_RE = re.compile(r"(?<![\w])(remplacer|remplace|replace|[ée]craser)(?![
 _db_lock = asyncio.Lock()          # évite deux créations d'emplacement en même temps (envois groupés)
 _job_lock = asyncio.Semaphore(1)   # un seul téléchargement + conversion à la fois
 _current_anime: dict[int, tuple[int, float]] = {}  # admin_id -> (anime_id, horodatage)
+_send_lock = asyncio.Lock()          # envois vers le canal un par un (évite les FLOOD_WAIT)
 _tasks: set[asyncio.Task] = set()      # références aux traitements en cours (évite qu'ils soient ramassés)
 
 
@@ -117,6 +121,22 @@ async def _find_or_create_season(db, anime_id: int, key: str) -> AnimeSeason:
 # ── Étapes de traitement ────────────────────────────────────────────────
 
 
+async def _channel_send(factory):
+    """Exécute un envoi vers le canal, un à la fois, avec une courte pause ; si Telegram répond
+    FLOOD_WAIT, on attend la durée demandée puis on réessaie (jusqu'à 5 fois)."""
+    async with _send_lock:
+        for attempt in range(5):
+            try:
+                return await factory()
+            except FloodWait as exc:
+                wait = int(getattr(exc, "value", 10) or 10) + 1
+                logger.warning("FLOOD_WAIT : attente de %s s (essai %s/5)", wait, attempt + 1)
+                await asyncio.sleep(wait)
+            finally:
+                await asyncio.sleep(1.2)
+        return await factory()
+
+
 async def _telegram_thumb(client: Client, media) -> bytes | None:
     """Miniature déjà fournie par Telegram pour cette vidéo (fichiers MP4 transférés)."""
     thumbs = getattr(media, "thumbs", None) or []
@@ -137,7 +157,7 @@ async def _store_thumb(client: Client, data: bytes | None) -> int | None:
     try:
         bio = io.BytesIO(data)
         bio.name = "thumb.jpg"
-        m = await client.send_photo(settings.TELEGRAM_CHANNEL_ID, bio, caption="vignette")
+        m = await _channel_send(lambda: client.send_photo(settings.TELEGRAM_CHANNEL_ID, bio, caption="vignette"))
         return m.id
     except Exception:  # noqa: BLE001
         logger.warning("vignette non enregistrée", exc_info=True)
@@ -290,6 +310,9 @@ def register(bot: Client):
         if p.episode is None or p.lang is None or p.title is None or p.slot_defaulted:
             p = merge_missing(p, parse_caption(os.path.splitext(fname)[0], is_filename=True))
 
+        if p.slot_defaulted and (getattr(media, "duration", None) or 0) >= 4200:
+            p = replace(p, slot_key="film1", slot_defaulted=False, episode=1)  # > 70 min : c'est un film
+
         status = await message.reply("⏳ Analyse…")
         try:
             if p.episode is None:
@@ -310,7 +333,7 @@ def register(bot: Client):
 
             if is_mp4:
                 # Déjà au bon format : copie directe dans le canal (sans retélécharger).
-                sent = await message.copy(chat_id=settings.TELEGRAM_CHANNEL_ID, caption=caption)
+                sent = await _channel_send(lambda: message.copy(chat_id=settings.TELEGRAM_CHANNEL_ID, caption=caption))
                 thumb_bytes = await _telegram_thumb(client, media)
             else:
                 size = getattr(media, "file_size", 0) or 0
@@ -333,8 +356,10 @@ def register(bot: Client):
                         duration, subs = info["duration"], info["subtitle_tracks"]
                         thumb_bytes = await media_service.extract_frame(dst, duration)
                         await status.edit_text("⬆️ Envoi dans le canal…")
-                        sent = await client.send_document(
-                            settings.TELEGRAM_CHANNEL_ID, dst, caption=caption, force_document=True
+                        sent = await _channel_send(
+                            lambda: client.send_document(
+                                settings.TELEGRAM_CHANNEL_ID, dst, caption=caption, force_document=True
+                            )
                         )
 
             thumb_msg_id = await _store_thumb(client, thumb_bytes)

@@ -24,11 +24,12 @@ MULTI_AS = "VOSTFR"
 _KINDS = ("saison", "saga", "film", "oav", "special")
 
 _NOISE = re.compile(
-    r"\b(version\s+convertie|convertie|2160p|1080p|720p|480p|4k|web[- ]?dl|web[- ]?rip|blu[- ]?ray|"
-    r"x26[45]|hevc|h\.?26[45]|aac|fhd|uhd)\b",
+    r"\b(version\s+convertie|convertie|2160p?|1080p?|720p?|480p?|4k|web[- ]?dl|web[- ]?rip|blu[- ]?ray|"
+    r"bd[- ]?rip|br[- ]?rip|dvd[- ]?rip|hdtv|remux|bd|x26[45]|hevc|h\.?26[45]|aac|ac3|eac3|dts|ddp\d*|"
+    r"10 ?bits?|fhd|uhd|multi[- ]?subs?|mkv|mp4|avi|webm|m4v)\b",
     re.I,
 )
-_LANG = re.compile(r"(?<![\w])(vostfr|vost|vff|vfi|vf|multi)(?![\w])", re.I)
+_LANG = re.compile(r"(?<![\w])(vostfr|vost|truefrench|french|vff|vfq|vfi|vf|multi)(?![\w])", re.I)
 
 _SXXEYY = re.compile(r"(?<![A-Za-z])S(\d{1,2})\s*E(\d{1,4})(?![\w])", re.I)
 _SEASON = re.compile(r"(?<![\w])(?:saison|season)\s*(\d{1,2})(?![\w])|(?<![\w])S(\d{1,2})(?![\w])", re.I)
@@ -100,6 +101,7 @@ def _clean(text: str, is_filename: bool) -> str:
     t = text or ""
     t = re.sub(r"https?://\S+|t\.me/\S+", " ", t)
     t = re.sub(r"[@#]\w+", " ", t)                                   # @canaux, #hashtags
+    t = re.sub(r"(?<=\w)\.(?=\w)", " ", t)   # Jujutsu.Kaisen.0.2021 -> Jujutsu Kaisen 0 2021
     if is_filename:
         t = t.replace("_", " ").replace(".", " ")
     t = re.sub(r"[^\w\s\-–—·|:.,!?'’()\[\]/&+]", " ", t)             # emojis, flèches...
@@ -167,12 +169,15 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
         if m:
             episode = int(m.group(1)); starts.append(m.start()); work = _blank(work, m)
     if episode is None:
-        nums = list(_NUMBER.finditer(work))
+        nums = [n for n in _NUMBER.finditer(work) if not (1900 <= int(n.group(1)) <= 2099)]
         if nums:
             m = nums[-1]
             episode = int(m.group(1)); starts.append(m.start())
 
     key, defaulted = ("saison1", True) if slot is None else (slot, False)
+    if defaulted and episode == 0:
+        # « Jujutsu Kaisen 0 » : le 0 est le numéro du film, pas un épisode.
+        key, defaulted, episode = "film0", False, 1
     if kind_of(key) == "film" and episode is None:
         episode = 1
 

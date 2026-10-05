@@ -1,134 +1,81 @@
 import { Link } from "react-router-dom";
-import { Heart, MessageCircle } from "lucide-react";
-import type { Episode } from "@/types";
-import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
+import { Play, Star } from "lucide-react";
+import { Badge2 } from "@/components/ui/Badge2";
+import type { Anime } from "@/types";
 
 interface Props {
-  episode: Episode;
-  blurred?: boolean;
-  active?: boolean;
-  compact?: boolean;
-  /** "grid" : vignette au-dessus du texte (listes en colonnes) ; "row" : vignette à gauche. */
-  variant?: "row" | "grid";
-  anime?: unknown;
+  anime: Anime;
   index?: number;
+  fullWidth?: boolean;
 }
 
-export function EpisodeCard({
-  episode,
-  blurred = false,
-  active = false,
-  compact = false,
-  variant = "row",
-}: Props) {
-  if (variant === "grid") {
-    return (
-      <Link
-        to={`/watch/${episode.id}`}
-        className="group block min-w-0 overflow-hidden rounded-xl border border-border bg-surface hover:border-primary/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-      >
-        <div className="relative aspect-video bg-surface-2 overflow-hidden">
-          {episode.thumbnail_url ? (
-            <img
-              src={episode.thumbnail_url}
-              alt={`Épisode ${episode.episode_number}`}
-              loading="lazy"
-              className={cn(
-                "absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105",
-                blurred && "blur-md scale-110",
-              )}
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center font-display font-extrabold text-3xl text-muted-foreground/40">
-              {episode.episode_number}
-            </div>
-          )}
-          <span className="absolute top-1.5 left-1.5 bg-black/75 text-white text-[10px] font-semibold font-body px-1.5 py-0.5 rounded">
-            Ép. {episode.episode_number}
-          </span>
-          <span className="absolute top-1.5 right-1.5 bg-primary text-primary-foreground text-[10px] font-semibold font-body px-1.5 py-0.5 rounded">
-            {episode.language}
-          </span>
-        </div>
-        <div className="p-2.5 min-w-0">
-          <h4 className="font-display font-semibold text-sm text-foreground truncate group-hover:text-primary transition-colors">
-            {episode.title || `Épisode ${episode.episode_number}`}
-          </h4>
-          <div className="mt-1.5 flex items-center gap-3 text-muted-foreground text-xs">
-            <span className="inline-flex items-center gap-1">
-              <Heart className="w-3.5 h-3.5" />
-              {episode.likes_count}
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <MessageCircle className="w-3.5 h-3.5" />
-              {episode.comments_count}
-            </span>
-          </div>
-        </div>
-      </Link>
-    );
-  }
+export function AnimeCard({ anime, index = 0, fullWidth = false }: Props) {
+  const langLabel =
+    anime.languages_available.length === 2
+      ? "VF & VOSTFR"
+      : anime.languages_available[0];
 
   return (
-    <Link
-      to={`/watch/${episode.id}`}
-      className={cn(
-        "group flex gap-3 p-2 rounded-xl transition-colors duration-200 hover:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-        active && "bg-surface border-l-[3px] border-primary",
-      )}
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-50px" }}
+      transition={{ duration: 0.4, delay: Math.min(index * 0.05, 0.4) }}
+      className={fullWidth ? "w-full" : "shrink-0 w-[150px] md:w-[180px]"}
     >
-      <div
-        className={cn(
-          "relative shrink-0 overflow-hidden rounded-lg bg-surface-2",
-          compact ? "w-[88px] aspect-video" : "w-[120px] md:w-[160px] aspect-video",
-        )}
+      <Link
+        to={`/anime/${anime.id}`}
+        className="group block focus:outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-xl"
       >
-        {!episode.thumbnail_url && (
-          <div className="absolute inset-0 flex items-center justify-center font-display font-extrabold text-2xl text-muted-foreground/40">
-            {episode.episode_number}
-          </div>
-        )}
-        {episode.thumbnail_url && (
+        <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-card)] transition-all duration-200 group-hover:scale-[1.03] group-hover:shadow-[var(--shadow-glow)]">
           <img
-            src={episode.thumbnail_url}
-            alt={`Épisode ${episode.episode_number}`}
+            src={anime.poster_url}
+            alt={anime.title}
             loading="lazy"
-            className={cn(
-              "absolute inset-0 w-full h-full object-cover transition-all duration-300",
-              blurred && "blur-md scale-110",
-            )}
+            className="absolute inset-0 w-full h-full object-cover"
           />
-        )}
-        <span className="absolute top-1.5 left-1.5 bg-black/75 text-white text-[10px] font-semibold font-body px-1.5 py-0.5 rounded">
-          Ép. {episode.episode_number}
-        </span>
-        <span className="absolute top-1.5 right-1.5 bg-primary text-primary-foreground text-[10px] font-semibold font-body px-1.5 py-0.5 rounded">
-          {episode.language}
-        </span>
-      </div>
 
-      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-        <div>
-          <h4 className="font-display font-semibold text-sm text-foreground line-clamp-2 group-hover:text-primary transition-colors">
-            {episode.title || `Épisode ${episode.episode_number}`}
-          </h4>
-          {!compact && (
-            <p className="text-xs text-muted-foreground mt-0.5 font-body">
-              Saison {episode.season_number}
-            </p>
-          )}
+          {/* Bottom gradient */}
+          <div
+            className="absolute inset-0"
+            style={{ background: "var(--gradient-card)" }}
+          />
+
+          {/* Language badge */}
+          <div className="absolute top-2 right-2">
+            <span className="bg-primary text-primary-foreground text-[10px] font-semibold font-body px-2 py-0.5 rounded-md">
+              {langLabel}
+            </span>
+          </div>
+
+          {/* Hover overlay with play */}
+          <div className="absolute inset-0 bg-black/55 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center">
+            <motion.div
+              initial={{ scale: 0.8 }}
+              whileHover={{ scale: 1 }}
+              className="w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-[var(--shadow-glow)]"
+            >
+              <Play className="w-6 h-6 fill-current ml-0.5" />
+            </motion.div>
+          </div>
+
+          {/* Score */}
+          <div className="absolute bottom-2 left-2 flex items-center gap-1 text-white">
+            <Star className="w-3 h-3 fill-primary text-primary" />
+            <span className="text-xs font-medium font-body">{anime.score}</span>
+          </div>
         </div>
-        <div className="flex items-center gap-3 text-muted-foreground text-xs">
-          <span className="inline-flex items-center gap-1">
-            <Heart className="w-3.5 h-3.5" />
-            {episode.likes_count}
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <MessageCircle className="w-3.5 h-3.5" />
-            {episode.comments_count}
-          </span>
-        </div>
-      </div>
-    </Link>
+
+        <h3 className="mt-2 text-[13px] font-display font-semibold text-foreground line-clamp-2 leading-tight">
+          {anime.title}
+        </h3>
+        <p className="text-[11px] text-muted-foreground mt-0.5 font-body">
+          {anime.year} • {anime.type === "film" ? "Film" : "Série"}
+        </p>
+      </Link>
+    </motion.div>
   );
 }
+
+export default AnimeCard;

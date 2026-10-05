@@ -42,6 +42,9 @@ bot = Client(
     api_id=settings.TELEGRAM_API_ID,
     api_hash=settings.TELEGRAM_API_HASH,
     bot_token=settings.TELEGRAM_BOT_TOKEN,
+    # Telegram demande parfois d'attendre (FLOOD_WAIT) : on attend jusqu'à 15 min puis on réessaie
+    # automatiquement, au lieu de faire échouer l'envoi.
+    sleep_threshold=900,
     in_memory=True,  # No session file — avoids stale auth key issues on Koyeb restart
     # Texte brut : sinon Pyrogram prend « <id> » pour une balise HTML et l'efface du message.
     parse_mode=ParseMode.DISABLED,

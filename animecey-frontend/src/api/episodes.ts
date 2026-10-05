@@ -23,6 +23,11 @@ export async function getStreamUrl(
   return res.data;
 }
 
+export async function fetchLikeStatus(id: number) {
+  const res = await api.get(`/episodes/${id}/like`);
+  return res.data as { liked: boolean; likes_count: number };
+}
+
 export async function likeEpisode(id: number) {
   const res = await api.post(`/episodes/${id}/like`);
   return res.data as { liked: boolean; likes_count: number };

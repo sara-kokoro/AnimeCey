@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import String, case, cast, distinct, func, select
+from sqlalchemy import String, case, cast, distinct, func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -18,6 +18,31 @@ from services.caption_parser import norm
 logger = logging.getLogger(__name__)
 
 TOP_LIMIT = 10  # chaque rangée de l'accueil : 10 animés au maximum
+
+# Genre affiché sur le site -> morceaux de texte à chercher dans les genres enregistrés
+# (TMDB en français : « Action & Adventure », AniList en anglais : « Adventure »...).
+GENRE_FRAGMENTS: dict[str, list[str]] = {
+    "action": ["action"],
+    "aventure": ["aventure", "adventure"],
+    "comédie": ["comédie", "comedie", "comedy"],
+    "drame": ["drame", "drama"],
+    "fantasy": ["fantasy", "fantastique"],
+    "horreur": ["horreur", "horror"],
+    "mystère": ["mystère", "mystere", "mystery"],
+    "romance": ["romance", "romantique"],
+    "sci-fi": ["sci-fi", "science-fiction", "science fiction"],
+    "shonen": ["shonen", "shōnen"],
+    "seinen": ["seinen"],
+    "slice of life": ["slice of life", "tranche de vie"],
+    "sports": ["sport"],
+    "surnaturel": ["surnaturel", "supernatural"],
+    "thriller": ["thriller", "suspense"],
+    "mecha": ["mecha"],
+    "isekai": ["isekai"],
+    "musique": ["musique", "music"],
+    "psychologique": ["psychologique", "psychological"],
+    "ecchi": ["ecchi"],
+}
 
 router = APIRouter()
 
@@ -97,7 +122,9 @@ async def list_animes(
     if status:
         query = query.where(Anime.status == status)
     if genre:
-        query = query.where(cast(Anime.genres, String).ilike(f'%"{genre}"%'))
+        fragments = GENRE_FRAGMENTS.get(genre.lower(), [genre.lower()])
+        genres_text = cast(Anime.genres, String)
+        query = query.where(or_(*[genres_text.ilike(f"%{f}%") for f in fragments]))
     if year:
         query = query.where(Anime.year == year)
 

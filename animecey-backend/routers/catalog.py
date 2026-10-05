@@ -169,13 +169,17 @@ async def open_title(
         if user is None:
             raise HTTPException(status_code=401, detail="Connecte-toi pour ajouter ce titre au catalogue")
 
+        source_down = False
         try:
             raw = await tmcooper.seasons(title.title)
             if not raw and await catalog_sync.ensure_local_index():
                 # le fichier de recherche de TMCooper venait de disparaître (redémarrage)
                 raw = await tmcooper.seasons(title.title)
         except tmcooper.TmcooperError as exc:
-            raise HTTPException(status_code=502, detail=f"Source indisponible: {exc}")
+            # La source externe est en panne : on crée quand même l'animé (tes envois Telegram
+            # n'en ont pas besoin) avec une saison par défaut.
+            logger.warning("Catalogue: source indisponible pour « %s » : %s", title.title, exc)
+            raw, source_down = [], True
 
         # Toutes les saisons / sagas, dans l'ordre d'Anime-Sama (hors scans de manga).
         seasons: list[tuple[str, str]] = []
@@ -187,8 +191,7 @@ async def open_title(
                 continue
             seen.add(key)
             seasons.append((key, label[:255]))
-        if not seasons:
-            raise HTTPException(status_code=404, detail="Aucune saison trouvée pour ce titre")
+        external = bool(seasons)  # des saisons venues de la source externe ?
 
         # Métadonnées : TMDB (français) + AniList, comme à la création manuelle.
         meta = await catalog_meta.find_metadata(title.title, title.poster_url, db)
@@ -197,6 +200,9 @@ async def open_title(
             if value and (await db.execute(select(Anime.id).where(getattr(Anime, field) == value))).first():
                 meta[field] = None
 
+        if not seasons:
+            # Aucune saison connue (source en panne ou titre absent) : un emplacement par défaut.
+            seasons = [("film1", "Film 1")] if meta.get("is_film") else [("saison1", "Saison 1")]
         all_film = all(k.startswith("film") for k, _ in seasons)
         anime = Anime(
             title=title.title[:255],
@@ -216,9 +222,15 @@ async def open_title(
         db.add(anime)
         await db.flush()
         for number, (key, label) in enumerate(seasons, start=1):
-            db.add(AnimeSeason(anime_id=anime.id, season_number=number, api_season=key, label=label))
-            for version in OPEN_VERSIONS:
-                db.add(TmcooperSource(anime_id=anime.id, api_name=title.title, season=key, version=version))
+            db.add(
+                AnimeSeason(
+                    anime_id=anime.id, season_number=number, api_season=key, label=label,
+                    kind=next((k for k in ("saison", "saga", "film", "oav", "special") if key.startswith(k)), "autre"),
+                )
+            )
+            if external:
+                for version in OPEN_VERSIONS:
+                    db.add(TmcooperSource(anime_id=anime.id, api_name=title.title, season=key, version=version))
         await db.commit()
 
         first_key = seasons[0][0]
@@ -230,8 +242,14 @@ async def open_title(
             )
         ).scalars().all()
 
-    _schedule(list(first_ids))
-    return {"anime_id": anime.id, "preparing": True, "seasons": [label for _, label in seasons]}
+    if external:
+        _schedule(list(first_ids))
+    return {
+        "anime_id": anime.id,
+        "preparing": external,
+        "seasons": [label for _, label in seasons],
+        "source_down": source_down,
+    }
 
 
 # ── Saisons et serveurs ────────────────────────────────────────────────
