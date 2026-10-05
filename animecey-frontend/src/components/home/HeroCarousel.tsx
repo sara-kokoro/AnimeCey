@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Play, Plus, Star } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Check, Play, Plus, Star } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { Badge2 } from "@/components/ui/Badge2";
 import { fetchFeatured } from "@/api/animes";
+import { addToWatchlist, fetchWatchlist, removeFromWatchlist } from "@/api/users";
+import { useAuthStore } from "@/stores/auth";
 import type { Anime } from "@/types";
 
 const DURATION = 15000;
@@ -48,6 +50,37 @@ export function HeroCarousel() {
   }
 
   const anime = featured[idx % featured.length];
+  // Watchlist : connexion requise ; un clic ajoute, un second clic retire.
+  const navigate = useNavigate();
+  const isAuthenticated = useAuthStore((st) => st.isAuthenticated);
+  const [listed, setListed] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!isAuthenticated) { setListed(new Set()); return; }
+    fetchWatchlist()
+      .then((rows: { anime: { id: number } }[]) => setListed(new Set(rows.map((r) => r.anime.id))))
+      .catch(() => undefined);
+  }, [isAuthenticated]);
+  const inList = listed.has(anime.id);
+  const toggleWatchlist = async () => {
+    if (!isAuthenticated) { navigate("/auth"); return; }
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (inList) await removeFromWatchlist(anime.id);
+      else await addToWatchlist(anime.id, "planned");
+      setListed((cur) => {
+        const next = new Set(cur);
+        if (inList) next.delete(anime.id); else next.add(anime.id);
+        return next;
+      });
+    } catch {
+      /* échec réseau : l'état reste inchangé */
+    } finally {
+      setBusy(false);
+    }
+  };
+
 
   return (
     <section
@@ -125,9 +158,13 @@ export function HeroCarousel() {
                 <Play className="w-4 h-4 fill-current" />
                 Regarder
               </Link>
-              <button className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white/10 text-white border border-white/20 backdrop-blur font-body font-semibold hover:bg-white/15 transition-all hover:scale-[1.02]">
-                <Plus className="w-4 h-4" />
-                Watchlist
+              <button
+                onClick={toggleWatchlist}
+                disabled={busy}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white/10 text-white border border-white/20 backdrop-blur font-body font-semibold hover:bg-white/15 transition-all hover:scale-[1.02] disabled:opacity-60"
+              >
+                {inList ? <Check className="w-4 h-4 text-primary" /> : <Plus className="w-4 h-4" />}
+                {inList ? "Dans ma watchlist" : "Watchlist"}
               </button>
             </div>
           </motion.div>

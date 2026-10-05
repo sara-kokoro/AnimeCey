@@ -7,6 +7,7 @@ from bot.handlers.quick_upload import register as register_quick_upload
 from bot.handlers.fiche import register as register_fiche
 from bot.handlers.vignettes import register as register_vignettes
 from bot.handlers.bilan import register as register_bilan
+from bot.handlers.ajouter import register as register_ajouter
 
 
 def register_all(bot):
@@ -14,6 +15,7 @@ def register_all(bot):
     register_fiche(bot)         # /fiche : choisir la fiche TMDB d'un animé
     register_vignettes(bot)     # /vignettes : vignettes des épisodes depuis TMDB
     register_bilan(bot)         # /bilan : ce qui est en ligne pour un animé
+    register_ajouter(bot)       # /ajouter : ajouter un animé absent du catalogue
     register_admin(bot)
     register_upload(bot)
     register_callbacks(bot)

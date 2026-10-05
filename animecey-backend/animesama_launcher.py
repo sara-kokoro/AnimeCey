@@ -1,7 +1,10 @@
 """Lance AnimeSamaApi (TMCooper) en local, avec trois ajouts.
 
-  1. Proxy Fixie (IP fixe) : si FIXIE_URL est défini, les requêtes vers
-     Anime-Sama passent par Fixie. Les autres (hébergeurs vidéo : Sibnet,
+  1. Accès à Anime-Sama via ZenRows (recommandé) ou Fixie (ancien) :
+     - ZENROWS_API_KEY défini : les requêtes GET vers Anime-Sama passent par l'API ZenRows
+       (https://api.zenrows.com/v1/). Chaque requête consomme des crédits ZenRows.
+     - sinon, si FIXIE_URL est défini : proxy Fixie comme avant.
+     Anime-Sama est le seul site concerné. Les autres (hébergeurs vidéo : Sibnet,
      Vidmoly...) restent directes, car leurs liens sont souvent liés à l'IP
      qui les a demandés : un lien obtenu via Fixie ne marcherait pas chez
      l'utilisateur.
@@ -11,7 +14,11 @@
      elle remplace le domaine détecté automatiquement.
 
 Variables d'environnement :
-  FIXIE_URL               http://fixie:TOKEN@xxxx.usefixie.com:80  (fournie par Fixie)
+  ZENROWS_API_KEY         clé d'API ZenRows (tableau de bord ZenRows)
+  ZENROWS_PARAMS          options ZenRows, au format URL (défaut : premium_proxy=true&proxy_country=fr).
+                          Si Anime-Sama bloque encore : premium_proxy=true&js_render=true&antibot=true
+                          (plus cher en crédits).
+  FIXIE_URL               http://fixie:TOKEN@xxxx.usefixie.com:80  (ancien, facultatif)
   ANIMESAMA_PROXY_MODE    auto (défaut) : au démarrage, un test DIRECT (sans proxy,
                           donc gratuit) est fait sur Anime-Sama ; s'il passe (HTTP 200),
                           le proxy est désactivé et ne consomme aucune requête.
@@ -54,6 +61,9 @@ def log(msg: str) -> None:
 import requests  # noqa: E402
 
 PROXY_URL = (os.getenv("FIXIE_URL") or os.getenv("ANIMESAMA_PROXY") or "").strip()
+ZENROWS_KEY = os.getenv("ZENROWS_API_KEY", "").strip()
+ZENROWS_PARAMS = os.getenv("ZENROWS_PARAMS", "premium_proxy=true&proxy_country=fr").strip()
+ZENROWS_URL = "https://api.zenrows.com/v1/"
 PROXY_MODE = os.getenv("ANIMESAMA_PROXY_MODE", "auto").strip().lower()
 _proxy_enabled = True
 PROXY_HOSTS = [
@@ -70,23 +80,47 @@ def _use_proxy(url: str) -> bool:
     return any(part in host for part in PROXY_HOSTS)
 
 
+def zenrows_args(url: str, kwargs: dict) -> tuple[str, dict]:
+    """Transforme une requête GET vers Anime-Sama en requête vers l'API ZenRows."""
+    from urllib.parse import parse_qsl, urlencode
+
+    kwargs = dict(kwargs)
+    target = str(url)
+    extra = kwargs.pop("params", None)
+    if extra:
+        target += ("&" if "?" in target else "?") + urlencode(extra, doseq=True)
+    params = {"apikey": ZENROWS_KEY, "url": target}
+    params.update(dict(parse_qsl(ZENROWS_PARAMS)))
+    kwargs["params"] = params
+    kwargs.pop("proxies", None)
+    kwargs["timeout"] = max(float(kwargs.get("timeout") or 0), 90.0)  # ZenRows peut être lent
+    return ZENROWS_URL, kwargs
+
+
 def install_proxy() -> None:
     original = requests.Session.request
 
     def request(self, method, url, *args, **kwargs):
         if _proxy_enabled and kwargs.get("proxies") is None and _use_proxy(url):
-            kwargs["proxies"] = {"http": PROXY_URL, "https": PROXY_URL}
+            if ZENROWS_KEY:
+                if str(method).upper() == "GET":
+                    url, kwargs = zenrows_args(url, kwargs)
+            elif PROXY_URL:
+                kwargs["proxies"] = {"http": PROXY_URL, "https": PROXY_URL}
         return original(self, method, url, *args, **kwargs)
 
     requests.Session.request = request
 
 
-if PROXY_URL:
+if ZENROWS_KEY:
+    install_proxy()
+    log(f"ZenRows actif (options : {ZENROWS_PARAMS}) pour: {', '.join(PROXY_HOSTS)}")
+elif PROXY_URL:
     install_proxy()
     shown = PROXY_URL.split("@")[-1]  # sans identifiants
     log(f"proxy Fixie actif ({shown}) pour: {', '.join(PROXY_HOSTS)}")
 else:
-    log("pas de proxy (FIXIE_URL non défini)")
+    log("pas de proxy (ni ZENROWS_API_KEY ni FIXIE_URL)")
 # --- proxy end -----------------------------------------------------------
 
 override = os.getenv("ANIMESAMA_URL", "").strip().rstrip("/")
@@ -145,14 +179,14 @@ elif not backend.BASE_URL:
 else:
     log(f"domaine Anime-Sama détecté: {backend.BASE_URL}")
 
-if PROXY_URL and PROXY_MODE != "always" and backend.BASE_URL:
+if (ZENROWS_KEY or PROXY_URL) and PROXY_MODE != "always" and backend.BASE_URL:
     code = probe_direct(backend.BASE_URL)
     if code == 200:
         _proxy_enabled = False
         log(f"test direct sur {backend.BASE_URL}: HTTP 200, accès sans proxy possible : "
-            "proxy désactivé (aucune requête Fixie consommée).")
+            "accès direct, proxy désactivé (aucun crédit consommé).")
     else:
-        log(f"test direct sur {backend.BASE_URL}: HTTP {code}, accès bloqué : le proxy reste actif.")
+        log(f"test direct sur {backend.BASE_URL}: HTTP {code}, accès bloqué : le proxy / ZenRows reste actif.")
 
 from src.api import Yui  # noqa: E402
 from src.utils.config import Config  # noqa: E402

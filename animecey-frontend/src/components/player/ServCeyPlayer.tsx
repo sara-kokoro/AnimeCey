@@ -98,6 +98,8 @@ export function ServCeyPlayer({
   const [notice, setNotice] = useState<string | null>(null);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [errorInfo, setErrorInfo] = useState<string | null>(null);
+  const autoRetries = useRef(0);
 
   const posKey = storageKey ? `servcey:pos:${storageKey}` : null;
   const canPip = typeof document !== "undefined" && "pictureInPictureEnabled" in document;
@@ -236,7 +238,28 @@ export function ServCeyPlayer({
     const onPause = () => { setPlaying(false); setControlsVisible(true); };
     const onWaiting = () => setWaiting(true);
     const onCanPlay = () => setWaiting(false);
-    const onErr = () => { setError(true); setWaiting(false); onReady?.(); };
+    const onErr = () => {
+      // Serveur qui se réveille (hébergeur gratuit) ou Telegram occupé : 2 réessais automatiques.
+      if (autoRetries.current < 2) {
+        const delay = autoRetries.current === 0 ? 2500 : 6000;
+        autoRetries.current += 1;
+        setWaiting(true);
+        window.setTimeout(() => setRetryKey((k) => k + 1), delay);
+        return;
+      }
+      setError(true);
+      setWaiting(false);
+      onReady?.();
+      // On interroge le serveur pour afficher la vraie cause (403, 503...).
+      fetch(src, { headers: { Range: "bytes=0-0" } })
+        .then(async (r) => {
+          if (r.ok) { setErrorInfo("Le serveur répond, mais le navigateur n'a pas pu lire ce format."); return; }
+          let detail = "";
+          try { detail = ((await r.json()) as { detail?: string }).detail ?? ""; } catch { /* pas de JSON */ }
+          setErrorInfo(`Erreur ${r.status}${detail ? ` — ${detail}` : ""}`);
+        })
+        .catch(() => setErrorInfo("Serveur injoignable (hors ligne ou en cours de démarrage)."));
+    };
     const onEnd = () => {
       setPlaying(false);
       setControlsVisible(true);
@@ -455,8 +478,9 @@ export function ServCeyPlayer({
           <p className="text-white font-body text-sm max-w-xs">
             Cette vidéo ne peut pas être lue pour le moment. Essaie un autre serveur ou réessaie.
           </p>
+          {errorInfo && <p className="text-white/50 font-body text-xs max-w-xs">{errorInfo}</p>}
           <button
-            onClick={() => { setError(false); setWaiting(true); setRetryKey((k) => k + 1); }}
+            onClick={() => { autoRetries.current = 0; setErrorInfo(null); setError(false); setWaiting(true); setRetryKey((k) => k + 1); }}
             className="px-5 py-2 rounded-lg bg-primary text-primary-foreground font-body font-semibold text-sm"
           >
             Réessayer

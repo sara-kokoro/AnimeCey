@@ -1,4 +1,4 @@
-import { useParams, Navigate, Link } from "react-router-dom";
+import { useParams, Navigate, Link, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -11,6 +11,8 @@ import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { fetchAnime } from "@/api/animes";
 import { fetchEpisodes } from "@/api/episodes";
 import { ensureSeason, fetchSeasonLabels } from "@/api/catalog";
+import { addFavorite, fetchFavorites, removeFavorite } from "@/api/users";
+import { useAuthStore } from "@/stores/auth";
 import type { Language } from "@/types";
 
 export default function AnimeDetail() {
@@ -25,6 +27,24 @@ export default function AnimeDetail() {
   const [season, setSeason] = useState(1);
   const [reverse, setReverse] = useState(false);
   const [favorite, setFavorite] = useState(false);
+  const isAuthenticated = useAuthStore((st) => st.isAuthenticated);
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!isAuthenticated || !id) { setFavorite(false); return; }
+    fetchFavorites()
+      .then((rows: { anime: { id: number } }[]) => setFavorite(rows.some((r) => r.anime.id === Number(id))))
+      .catch(() => undefined);
+  }, [isAuthenticated, id]);
+  const toggleFavorite = async () => {
+    if (!isAuthenticated) { navigate("/auth"); return; }
+    const next = !favorite;
+    setFavorite(next);
+    try {
+      if (next) await addFavorite(Number(id)); else await removeFavorite(Number(id));
+    } catch {
+      setFavorite(!next);
+    }
+  };
   const [trailerOpen, setTrailerOpen] = useState(false);
 
   const lang = language ?? anime?.languages_available?.[0] ?? "VOSTFR";
@@ -163,7 +183,7 @@ export default function AnimeDetail() {
                   </button>
                 )}
                 <button
-                  onClick={() => setFavorite(!favorite)}
+                  onClick={toggleFavorite}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-surface border border-border text-foreground font-body font-semibold hover:border-primary/40 transition-all"
                 >
                   <Heart className={`w-4 h-4 ${favorite ? "fill-primary text-primary" : ""}`} />

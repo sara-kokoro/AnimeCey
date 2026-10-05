@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import random
 import math
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -157,28 +158,36 @@ async def list_animes(
 
 @router.get("/featured")
 async def featured(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Anime).where(Anime.is_featured == True).order_by(func.random()).limit(8)
-    )
-    animes = list(result.scalars().all())
-    if not animes:
-        # Rien en vedette : on met en avant les tendances de la saison déjà sur le site,
-        # puis les derniers ajouts, pour que le grand bandeau ne reste jamais vide.
+    """Grand bandeau de l'accueil : 6 animés qui changent chaque jour (24 h).
+
+    Le choix est mélangé avec une graine = la date du jour (UTC) : tout le monde voit la même
+    sélection pendant la journée, et elle change à minuit. Les animés « en vedette » choisis dans
+    l'admin passent en premier ; sinon on pioche parmi les animés du site (les tendances de la
+    saison sont ajoutées en priorité).
+    """
+    rng = random.Random(datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    flagged = (await db.execute(select(Anime).where(Anime.is_featured == True))).scalars().all()  # noqa: E712
+    pool = list(flagged)
+    if len(pool) < 6:
+        taken = {a.id for a in pool}
         seasonal = await _seasonal_animes(db, "TRENDING_DESC") or []
-        animes = [a for a in seasonal if a.banner_url or a.poster_url][:6]
-        if len(animes) < 6:
-            taken = [a.id for a in animes] or [0]
-            more = (
-                await db.execute(
-                    select(Anime)
-                    .where(Anime.id.in_(select(distinct(Episode.anime_id))), Anime.id.notin_(taken))
-                    .where((Anime.banner_url.isnot(None)) | (Anime.poster_url.isnot(None)))
-                    .order_by(Anime.created_at.desc())
-                    .limit(6 - len(animes))
-                )
-            ).scalars().all()
-            animes.extend(more)
-    return await _enrich_animes(db, animes)
+        extra = [a for a in seasonal if a.id not in taken and (a.banner_url or a.poster_url)]
+        taken |= {a.id for a in extra}
+        others = (
+            await db.execute(
+                select(Anime)
+                .where(Anime.id.in_(select(distinct(Episode.anime_id))), Anime.id.notin_(list(taken) or [0]))
+                .where((Anime.banner_url.isnot(None)) | (Anime.poster_url.isnot(None)))
+                .limit(60)
+            )
+        ).scalars().all()
+        rest = extra + list(others)
+        rest.sort(key=lambda a: a.id)       # ordre stable avant le mélange du jour
+        rng.shuffle(rest)
+        pool.extend(rest)
+    else:
+        rng.shuffle(pool)
+    return await _enrich_animes(db, pool[:6])
 
 
 async def _top_week_by_views(db: AsyncSession):
