@@ -112,9 +112,13 @@ async def lifespan(app: FastAPI):
 
             register_all(bot)
 
+            from bot.channel_peer import ensure_channel_peer, register_channel_logger
+            register_channel_logger(bot)
+
             logger.info("Starting Telegram bot...")
             await bot.start()
             bot_running = True
+            await ensure_channel_peer(bot)
             logger.info("Bot started: @%s", bot.me.username if bot.me else "unknown")
         except Exception as exc:
             logger.warning("Telegram bot failed to start: %s. API will run without bot.", exc)
