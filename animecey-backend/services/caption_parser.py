@@ -193,3 +193,58 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
         title = None
 
     return Parsed(title=title, slot_key=key, slot_defaulted=defaulted, episode=episode, lang=lang, multi=multi)
+
+
+# ── Options de la commande /anime : « /anime 16 VF S01 », « /anime Black Clover saga 2 » ──
+
+_ARG_LANG = re.compile(r"(?:^|\s)(vostfr|vost|vff|vfq|vf)$", re.I)
+_ARG_SEASON = re.compile(
+    r"(?:^|\s)(?:saison|season|s)\s*(\d{1,2})(?:\s*(?:partie|part|cour)\s*(\d))?$", re.I
+)
+_ARG_SAGA = re.compile(r"(?:^|\s)saga\s*(\d{1,2})$", re.I)
+_ARG_FILM = re.compile(r"(?:^|\s)films?(?:\s*(\d{1,2}))?$", re.I)
+_ARG_OAV = re.compile(r"(?:^|\s)(?:oav|ova|oad)$", re.I)
+_ARG_SPECIAL = re.compile(r"(?:^|\s)(?:specials?|spéciaux|spécial|speciaux)$", re.I)
+
+
+def parse_anime_args(arg: str) -> tuple[str, str | None, str | None]:
+    """'16 VF S01' -> ('16', 'VF', 'saison1') ; 'Black Clover saga 2' -> ('Black Clover', None, 'saga2').
+
+    Les options (langue, emplacement) se lisent en fin de commande, dans n'importe quel ordre.
+    Renvoie (animé : id ou titre, langue | None, clé d'emplacement | None).
+    """
+    query = (arg or "").strip()
+    lang: str | None = None
+    slot: str | None = None
+    for _ in range(3):
+        if lang is None:
+            m = _ARG_LANG.search(query)
+            if m:
+                lang = "VOSTFR" if m.group(1).lower() in ("vostfr", "vost") else "VF"
+                query = query[: m.start()].strip()
+                continue
+        if slot is None:
+            m = _ARG_SEASON.search(query)
+            if m:
+                slot = f"saison{int(m.group(1))}" + (f"partie{int(m.group(2))}" if m.group(2) else "")
+            else:
+                m = _ARG_SAGA.search(query)
+                if m:
+                    slot = f"saga{int(m.group(1))}"
+                else:
+                    m = _ARG_FILM.search(query)
+                    if m:
+                        slot = f"film{int(m.group(1) or 1)}"
+                    else:
+                        m = _ARG_OAV.search(query)
+                        if m:
+                            slot = "oav"
+                        else:
+                            m = _ARG_SPECIAL.search(query)
+                            if m:
+                                slot = "special"
+            if m:
+                query = query[: m.start()].strip()
+                continue
+        break
+    return query, lang, slot

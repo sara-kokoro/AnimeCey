@@ -6,6 +6,8 @@ Le fichier est mis dans le canal Telegram privé (stockage), puis rattaché à l
 Commande utile : /anime 42 (ou /anime Black Clover) fixe l'animé pour les envois suivants,
 quand la légende ne contient pas le même nom que dans ta base (ex. « Kage no Jitsuryokusha »
 pour « The Eminence in Shadow »).
+Options facultatives, dans n'importe quel ordre : la langue (VF / VOSTFR) et l'emplacement
+(S01, Saga 2, Film, OAV...) : « /anime 16 VF S01 » force VF + Saison 1 pour tous les envois suivants.
 """
 
 from __future__ import annotations
@@ -33,13 +35,15 @@ from database import async_session
 from models import Anime, Episode, LanguageEnum
 from models_catalog import AnimeSeason
 from services import media as media_service
-from services.caption_parser import Parsed, kind_of, merge_missing, norm, parse_caption, pretty_label
+from services.caption_parser import (
+    Parsed, kind_of, merge_missing, norm, parse_anime_args, parse_caption, pretty_label,
+)
 from services.filestream import get_media_from_message
 from services.tmcooper_sync import _get_or_create_folder
 
 logger = logging.getLogger(__name__)
 
-VIDEO_EXT = (".mkv", ".mp4", ".avi", ".webm", ".mov", ".ts", ".m4v")
+VIDEO_EXT = (".mkv", ".mp4", ".avi", ".webm", ".mov", ".ts", ".m4v", ".flv")
 TMP_DIR = os.getenv("TELEGRAM_TMP_DIR", tempfile.gettempdir())
 CURRENT_TTL = 3 * 3600  # /anime reste actif 3 h
 # Mot à ajouter dans la légende pour remplacer un épisode déjà présent
@@ -48,6 +52,8 @@ _REPLACE_RE = re.compile(r"(?<![\w])(remplacer|remplace|replace|[ée]craser)(?![
 _db_lock = asyncio.Lock()          # évite deux créations d'emplacement en même temps (envois groupés)
 _job_lock = asyncio.Semaphore(1)   # un seul téléchargement + conversion à la fois
 _current_anime: dict[int, tuple[int, float]] = {}  # admin_id -> (anime_id, horodatage)
+# admin_id -> (langue forcée | None, emplacement forcé | None) ; vit aussi longtemps que /anime
+_current_opts: dict[int, tuple[str | None, str | None]] = {}
 _send_lock = asyncio.Lock()          # envois vers le canal un par un (évite les FLOOD_WAIT)
 _tasks: set[asyncio.Task] = set()      # références aux traitements en cours (évite qu'ils soient ramassés)
 
@@ -278,27 +284,54 @@ def register(bot: Client):
     async def cmd_anime(client: Client, message: Message):
         if not message.from_user or not is_admin(message.from_user.id):
             return
-        arg = " ".join(message.command[1:]).strip()
+        raw_arg = " ".join(message.command[1:]).strip()
         uid = message.from_user.id
-        if not arg:
-            cur = _current_anime.get(uid)
-            if cur and time.time() - cur[1] < CURRENT_TTL:
+        query, lang, slot = parse_anime_args(raw_arg)
+
+        def _opts_text(l: str | None, sl: str | None) -> str:
+            parts = []
+            if l:
+                parts.append(f"langue : {l}")
+            if sl:
+                parts.append(f"emplacement : {pretty_label(sl)}")
+            return (" · " + " · ".join(parts)) if parts else " · langue et emplacement lus dans la légende"
+
+        cur = _current_anime.get(uid)
+        active = bool(cur and time.time() - cur[1] < CURRENT_TTL)
+
+        if not raw_arg:
+            if active:
                 async with async_session() as db:
                     a = await db.get(Anime, cur[0])
-                return await message.reply(f"Animé actuel : {a.title if a else cur[0]}")
-            return await message.reply("Aucun animé fixé. Usage : /anime <id ou titre>")
+                l, sl = _current_opts.get(uid, (None, None))
+                return await message.reply(f"Animé actuel : {a.title if a else cur[0]}{_opts_text(l, sl)}")
+            return await message.reply(
+                "Aucun animé fixé. Usage : /anime <id ou titre> [VF|VOSTFR] [S01|Saga 2|Film|OAV]"
+            )
+
+        # « /anime VF S02 » : on garde l'animé déjà fixé et on change seulement les options
+        if not query:
+            if not active:
+                return await message.reply("Aucun animé fixé. Commence par /anime <id ou titre>.")
+            _current_anime[uid] = (cur[0], time.time())
+            _current_opts[uid] = (lang, slot)
+            async with async_session() as db:
+                a = await db.get(Anime, cur[0])
+            return await message.reply(f"✅ Options mises à jour : {a.title if a else cur[0]}{_opts_text(lang, slot)}")
+
         async with async_session() as db:
-            if arg.isdigit():
-                a = await db.get(Anime, int(arg))
+            if query.isdigit():
+                a = await db.get(Anime, int(query))
                 row = a and type("R", (), {"id": a.id, "title": a.title})
                 candidates = []
             else:
-                row, candidates = await _resolve_anime(db, arg, None)
+                row, candidates = await _resolve_anime(db, query, None)
         if row is None:
             names = "\n".join(f"• {c.id} — {c.title}" for c in candidates)
             return await message.reply("Animé introuvable." + (f" Proches :\n{names}" if names else ""))
         _current_anime[uid] = (row.id, time.time())
-        await message.reply(f"✅ Animé fixé : {row.title} (3 h). Envoie tes fichiers.")
+        _current_opts[uid] = (lang, slot)
+        await message.reply(f"✅ Animé fixé : {row.title} (3 h){_opts_text(lang, slot)}. Envoie tes fichiers.")
 
     async def _process(client: Client, message: Message):
         media = message.video or message.document
@@ -309,6 +342,18 @@ def register(bot: Client):
         p = parse_caption(_REPLACE_RE.sub(" ", raw_caption))
         if p.episode is None or p.lang is None or p.title is None or p.slot_defaulted:
             p = merge_missing(p, parse_caption(os.path.splitext(fname)[0], is_filename=True))
+
+        # Options de /anime (langue / emplacement forcés), tant que l'animé fixé est actif
+        uid = message.from_user.id
+        cur = _current_anime.get(uid)
+        if cur and time.time() - cur[1] < CURRENT_TTL:
+            forced_lang, forced_slot = _current_opts.get(uid, (None, None))
+            if forced_lang:
+                p = replace(p, lang=forced_lang, multi=False)
+            if forced_slot:
+                p = replace(p, slot_key=forced_slot, slot_defaulted=False)
+                if kind_of(forced_slot) == "film" and p.episode is None:
+                    p = replace(p, episode=1)
 
         if p.slot_defaulted and (getattr(media, "duration", None) or 0) >= 4200:
             p = replace(p, slot_key="film1", slot_defaulted=False, episode=1)  # > 70 min : c'est un film
