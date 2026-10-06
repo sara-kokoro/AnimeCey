@@ -105,13 +105,35 @@ HELP_TEXT = (
 )
 
 
+def split_message(text: str, limit: int = 3500) -> list[str]:
+    """Découpe un long texte en messages Telegram (max 4096 caractères), aux sauts de paragraphe."""
+    parts, cur = [], ""
+    for block in text.split("\n\n"):
+        while len(block) > limit:  # paragraphe géant : coupe à la dernière ligne
+            cut = block.rfind("\n", 0, limit) or limit
+            piece, block = block[:cut], block[cut:].lstrip("\n")
+            if cur:
+                parts.append(cur)
+                cur = ""
+            parts.append(piece)
+        if len(cur) + len(block) + 2 > limit and cur:
+            parts.append(cur)
+            cur = block
+        else:
+            cur = f"{cur}\n\n{block}" if cur else block
+    if cur:
+        parts.append(cur)
+    return parts
+
+
 def register(bot: Client):
 
     @bot.on_message(filters.command(["start", "help"]) & filters.private)
     async def cmd_start(client: Client, message: Message):
         if not message.from_user or not is_admin(message.from_user.id):
             return await message.reply("Accès non autorisé.")
-        await message.reply(HELP_TEXT)
+        for part in split_message(HELP_TEXT):
+            await message.reply(part)
 
     @bot.on_message(filters.command("status") & filters.private)
     async def cmd_status(client: Client, message: Message):
