@@ -9,6 +9,7 @@ from bot.handlers.vignettes import register as register_vignettes
 from bot.handlers.bilan import register as register_bilan
 from bot.handlers.ajouter import register as register_ajouter
 from bot.handlers.supprimer import register as register_supprimer
+from bot.handlers.alias import register as register_alias
 
 
 def register_all(bot):
@@ -18,6 +19,7 @@ def register_all(bot):
     register_bilan(bot)         # /bilan : ce qui est en ligne pour un animé
     register_ajouter(bot)       # /ajouter : ajouter un animé absent du catalogue
     register_supprimer(bot)     # /supprimer : supprimer un animé (avec confirmation)
+    register_alias(bot)         # /alias : autres noms d'un animé (recherche)
     register_admin(bot)
     register_upload(bot)
     register_callbacks(bot)

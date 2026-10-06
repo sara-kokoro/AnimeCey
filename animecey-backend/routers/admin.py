@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth import require_admin
+from auth import require_admin, require_anime_adder
 from database import get_db
 from models import (
     Anime,
@@ -85,7 +85,7 @@ async def admin_list_animes(
 @router.post("/animes", status_code=201)
 async def admin_create_anime(
     body: AnimeCreate,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_anime_adder),
     db: AsyncSession = Depends(get_db),
 ):
     anime = Anime(**body.model_dump())
@@ -101,6 +101,9 @@ async def admin_create_anime(
     db.add(root_folder)
     await db.commit()
 
+    from services import aliases
+
+    aliases.schedule_sync(anime.id)
     return {"id": anime.id, "title": anime.title, "folder_id": root_folder.id}
 
 

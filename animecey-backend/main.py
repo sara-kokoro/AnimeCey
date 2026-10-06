@@ -133,6 +133,10 @@ async def lifespan(app: FastAPI):
     from services import catalog_sync
     catalog_sync.start_loop()
 
+    # Autres noms des animés (recherche floue) : rattrapage en arrière-plan
+    from services import aliases as _aliases
+    _aliases.start_backfill()
+
     yield
 
     await catalog_sync.stop_loop()

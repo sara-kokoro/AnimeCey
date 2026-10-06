@@ -28,11 +28,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth import get_current_user_optional
+from auth import can_add_anime, get_current_user_optional, require_anime_adder
 from database import get_db
 from models import Anime, AnimeStatus, AnimeType, Episode, TmcooperSource, User
 from models_catalog import AnimeSeason, CatalogTitle, EpisodeServer
-from services import catalog_episodes, catalog_meta, catalog_sync, tmcooper, tmcooper_sync
+from services import aliases, catalog_episodes, catalog_meta, catalog_sync, tmcooper, tmcooper_sync
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +74,16 @@ async def search_catalog(
     q: str = Query(..., min_length=1, max_length=100),
     page: int = Query(1, ge=1),
     limit: int = Query(24, ge=1, le=100),
+    _adder: User = Depends(require_anime_adder),  # réservé à admin@animecey.app (ajout d'animés)
     db: AsyncSession = Depends(get_db),
 ):
+    """Titres du catalogue Anime-Sama PAS ENCORE dans AnimeCey (pour les ajouter)."""
     pattern = f"%{_escape_like(q.strip())}%"
     cond = or_(
         CatalogTitle.title.ilike(pattern, escape="\\"),
         CatalogTitle.title_jp.ilike(pattern, escape="\\"),
     )
+    cond = cond & ~func.lower(CatalogTitle.title).in_(select(func.lower(Anime.title)))
 
     total = (await db.execute(select(func.count()).select_from(CatalogTitle).where(cond))).scalar() or 0
     rows = (
@@ -168,6 +171,8 @@ async def open_title(
 
         if user is None:
             raise HTTPException(status_code=401, detail="Connecte-toi pour ajouter ce titre au catalogue")
+        if not can_add_anime(user):
+            raise HTTPException(status_code=403, detail="Seul l'administrateur peut ajouter un animé")
 
         source_down = False
         try:
@@ -242,6 +247,7 @@ async def open_title(
             )
         ).scalars().all()
 
+    aliases.schedule_sync(anime.id)  # autres noms (romaji, anglais...) pour la recherche
     if external:
         _schedule(list(first_ids))
     return {

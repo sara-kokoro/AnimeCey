@@ -11,6 +11,7 @@ from sqlalchemy import String, case, cast, distinct, func, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
+from services import search_fuzzy
 from models import Anime, Episode, LanguageEnum, WatchHistory
 from schemas import AnimePublic
 from services import anilist
@@ -116,8 +117,11 @@ async def list_animes(
 ):
     query = select(Anime)
 
+    ranked: list[int] | None = None
     if q:
-        query = query.where(Anime.title.ilike(f"%{q}%") | Anime.title_jp.ilike(f"%{q}%"))
+        # Recherche floue : accents, fautes de frappe, autres noms (« Shingeki no Kyojin »...)
+        ranked = await search_fuzzy.ranked_anime_ids(db, q)
+        query = query.where(Anime.id.in_(ranked or [-1]))
     if type:
         query = query.where(Anime.type == type)
     if status:
@@ -136,6 +140,15 @@ async def list_animes(
         sub_vf = select(distinct(Episode.anime_id)).where(Episode.language == LanguageEnum.VF)
         sub_vo = select(distinct(Episode.anime_id)).where(Episode.language == LanguageEnum.VOSTFR)
         query = query.where(Anime.id.in_(sub_vf)).where(Anime.id.in_(sub_vo))
+
+    if ranked is not None and not sort:
+        # Classés par pertinence, paginés en mémoire (peu de résultats)
+        rows = {a.id: a for a in (await db.execute(query)).scalars().all()}
+        ordered = [rows[i] for i in ranked if i in rows]
+        total = len(ordered)
+        pages = max(1, math.ceil(total / limit))
+        items = await _enrich_animes(db, ordered[(page - 1) * limit : page * limit])
+        return {"items": items, "total": total, "page": page, "pages": pages}
 
     if sort == "za":
         query = query.order_by(Anime.title.desc())

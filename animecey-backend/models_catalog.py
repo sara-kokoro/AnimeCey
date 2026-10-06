@@ -99,3 +99,17 @@ class EpisodeServer(Base):
     label: Mapped[str] = mapped_column(String(80), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
     type: Mapped[str] = mapped_column(String(10), nullable=False, default="embed")
+
+
+class AnimeAlias(Base):
+    """Autres noms d'un animé (romaji, anglais, abréviations...) pour la recherche floue."""
+
+    __tablename__ = "anime_aliases"
+    __table_args__ = (UniqueConstraint("anime_id", "alias_norm", name="uq_anime_aliases_anime_norm"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    anime_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("animes.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    alias: Mapped[str] = mapped_column(String(500), nullable=False)
+    alias_norm: Mapped[str] = mapped_column(String(500), nullable=False)

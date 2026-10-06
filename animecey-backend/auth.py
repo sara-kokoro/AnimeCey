@@ -100,3 +100,17 @@ def get_client_ip(request: Request) -> str:
     if request.client:
         return request.client.host
     return "0.0.0.0"
+
+
+def can_add_anime(user: Optional[User]) -> bool:
+    """Seul le compte ADD_ANIME_EMAIL (admin@animecey.app) peut ajouter un animé."""
+    return bool(user and user.email and user.email.strip().lower() == settings.ADD_ANIME_EMAIL.strip().lower())
+
+
+async def require_anime_adder(user: User = Depends(get_current_user)) -> User:
+    if not can_add_anime(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seul l'administrateur peut ajouter un animé",
+        )
+    return user
