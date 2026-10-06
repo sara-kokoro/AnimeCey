@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import time
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -57,10 +56,6 @@ async def _ensure_channel_msg(ep: Episode, db: AsyncSession):
     return None
 
 
-_MSG_TTL = 600  # secondes de cache du message Telegram (évite un appel Telegram par Range)
-_msg_cache: dict[int, tuple[float, object]] = {}
-
-
 def _public_base(request: Request) -> str:
     """URL publique du backend. Derrière le proxy, le schéma vu est parfois http:// :
     on force https (sinon le navigateur bloque la vidéo en contenu mixte)."""
@@ -90,65 +85,43 @@ def _parse_range(header: str | None, size: int) -> tuple[int, int | None] | None
 
 
 async def _telegram_response(ep: Episode, request: Request, db: AsyncSession) -> StreamingResponse:
-    """Lit le fichier de l'épisode depuis le canal Telegram (MTProto), avec support de Range."""
-    from services.filestream import get_media_from_message, stream_media
+    """Lit le fichier de l'épisode depuis le canal Telegram (MTProto), avec support de Range.
+
+    La lecture est confiée au pool de bots (services/botpool.py) : le bot le moins occupé sert la vidéo,
+    et si Telegram le refuse, un autre prend le relais sans couper le spectateur.
+    """
+    from services import botpool
 
     if not ep.servcey1_file_id:
         raise HTTPException(status_code=404, detail="Épisode introuvable")
-    try:
-        from bot.client import bot
-    except ImportError:
-        raise HTTPException(status_code=503, detail="Bot Telegram non disponible")
-    if not bot.is_connected:
-        raise HTTPException(status_code=503, detail="Bot Telegram non connecté (ENABLE_TELEGRAM_BOT=true ?)")
 
     msg_id = await _ensure_channel_msg(ep, db)
     if not msg_id:
         raise HTTPException(status_code=503, detail="Fichier introuvable dans le canal Telegram")
 
-    cached = _msg_cache.get(msg_id)
-    if cached and time.monotonic() - cached[0] < _MSG_TTL:
-        msg = cached[1]
-    else:
-        try:
-            msg = await bot.get_messages(settings.TELEGRAM_CHANNEL_ID, msg_id)
-        except Exception as exc:
-            logger.exception("Failed to get channel message %s", msg_id)
-            raise HTTPException(status_code=503, detail=f"Erreur Telegram: {exc}")
-        _msg_cache[msg_id] = (time.monotonic(), msg)
-
-    media = get_media_from_message(msg)
-    if not media:
-        _msg_cache.pop(msg_id, None)
-        raise HTTPException(status_code=404, detail="Fichier non trouvé dans le canal")
-
-    size = getattr(media, "file_size", 0) or 0
-    parsed = _parse_range(request.headers.get("range"), size)
-    if parsed is None:
-        return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
-    range_start, range_end = parsed
-
     try:
-        body, from_bytes, until_bytes, file_size, mime_type, file_name = await stream_media(
-            bot, msg, range_start, range_end
-        )
-    except Exception as exc:
-        _msg_cache.pop(msg_id, None)
-        logger.exception("FileStream error for ep %s", ep.id)
+        handle = await botpool.pool.open_stream(msg_id, request.headers.get("range"), _parse_range)
+    except botpool.RangeError as exc:
+        return Response(status_code=416, headers={"Content-Range": f"bytes */{exc.size}"})
+    except botpool.MediaMissing:
+        raise HTTPException(status_code=404, detail="Fichier non trouvé dans le canal")
+    except botpool.PoolUnavailable as exc:
+        logger.error("Aucun bot n'a pu lire l'épisode %s : %s", ep.id, exc)
         raise HTTPException(status_code=503, detail=f"Erreur streaming: {exc}")
 
+    mime_type = handle.mime_type
     if not (mime_type or "").startswith("video/"):
         mime_type = "video/mp4"  # un MP4 envoyé comme document arrive parfois en octet-stream
     headers = {
         "Content-Type": mime_type,
-        "Content-Length": str(until_bytes - from_bytes + 1),
+        "Content-Length": str(handle.until_bytes - handle.from_bytes + 1),
         "Accept-Ranges": "bytes",
         "Cache-Control": "private, max-age=3600",
     }
     partial = request.headers.get("range") is not None
     if partial:
-        headers["Content-Range"] = f"bytes {from_bytes}-{until_bytes}/{file_size}"
-    return StreamingResponse(body, status_code=206 if partial else 200, headers=headers)
+        headers["Content-Range"] = f"bytes {handle.from_bytes}-{handle.until_bytes}/{handle.file_size}"
+    return StreamingResponse(handle.body, status_code=206 if partial else 200, headers=headers)
 
 
 @router.get("")
@@ -255,17 +228,16 @@ async def episode_thumb(episode_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Vignette introuvable")
     data = _thumb_cache.get(ep.thumb_msg_id)
     if data is None:
+        from services import botpool
+
+        client = botpool.pool.any_client()
+        if client is None:
+            raise HTTPException(status_code=503, detail="Aucun bot Telegram disponible")
         try:
-            from bot.client import bot
-        except ImportError:
-            raise HTTPException(status_code=503, detail="Bot Telegram non disponible")
-        if not bot.is_connected:
-            raise HTTPException(status_code=503, detail="Bot Telegram non connecté")
-        try:
-            msg = await bot.get_messages(settings.TELEGRAM_CHANNEL_ID, ep.thumb_msg_id)
+            msg = await client.get_messages(settings.TELEGRAM_CHANNEL_ID, ep.thumb_msg_id)
             if not msg or not msg.photo:
                 raise HTTPException(status_code=404, detail="Vignette introuvable")
-            buf = await bot.download_media(msg, in_memory=True)
+            buf = await client.download_media(msg, in_memory=True)
             data = buf.getvalue()
         except HTTPException:
             raise

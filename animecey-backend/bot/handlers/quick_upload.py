@@ -56,6 +56,8 @@ _current_anime: dict[int, tuple[int, float]] = {}  # admin_id -> (anime_id, horo
 _current_opts: dict[int, tuple[str | None, str | None]] = {}
 # admin_id présents ici : /movie sur un film -> chaque fichier est l'épisode 1 du « Film 1 » (la légende peut être vide)
 _current_movie: set[int] = set()
+# admin_id présents ici : dernière commande = /movie (film, Netflix, Prime Video...) -> l'animé fixé passe AVANT le titre du fichier
+_movie_pinned: set[int] = set()
 _send_lock = asyncio.Lock()          # envois vers le canal un par un (évite les FLOOD_WAIT)
 _tasks: set[asyncio.Task] = set()      # références aux traitements en cours (évite qu'ils soient ramassés)
 
@@ -101,10 +103,12 @@ async def _resolve_anime(db, title: str | None, admin_id: int | None):
 
 
 async def _fixed_anime(db, admin_id: int | None):
-    """Animé fixé par /anime ou /movie (encore actif), sinon None. Il passe AVANT le titre lu dans
-    la légende ou le nom du fichier : « Deadpool.2.2018.avi » donne le titre « Deadpool », qui
-    retomberait sur le film 1 alors que tu as fixé le film 2."""
-    cur = _current_anime.get(admin_id) if admin_id else None
+    """Animé fixé par /movie (encore actif), sinon None. Pour un film, le nom du fichier ne dit pas
+    lequel c'est : « Deadpool.2.2018.avi » donne le titre « Deadpool », qui retomberait sur le
+    film 1 alors que tu as fixé le film 2. /anime n'est pas concerné (la légende reste prioritaire)."""
+    if not admin_id or admin_id not in _movie_pinned:
+        return None
+    cur = _current_anime.get(admin_id)
     if not cur or time.time() - cur[1] >= CURRENT_TTL:
         return None
     return (await db.execute(select(Anime.id, Anime.title, Anime.title_jp).where(Anime.id == cur[0]))).first()
@@ -180,6 +184,106 @@ async def _store_thumb(client: Client, data: bytes | None) -> int | None:
     except Exception:  # noqa: BLE001
         logger.warning("vignette non enregistrée", exc_info=True)
         return None
+
+
+def _size(n: float) -> str:
+    return f"{n / 2**30:.2f} Go".replace(".", ",") if n >= 2**30 else f"{n / 2**20:.0f} Mo"
+
+
+def _eta(seconds: float) -> str:
+    s = int(max(seconds, 0))
+    h, rest = divmod(s, 3600)
+    m, sec = divmod(rest, 60)
+    if h:
+        return f"{h} h {m:02d} min"
+    if m:
+        return f"{m} min {sec:02d} s"
+    return f"{sec} s"
+
+
+def _bar(pct: float, width: int = 10) -> str:
+    n = max(0, min(width, round(width * pct / 100)))
+    return "▰" * n + "▱" * (width - n)
+
+
+class _StatusUpdater:
+    """Met à jour le message d'état dans Telegram, au plus une fois toutes les 4 s (anti-FLOOD_WAIT)."""
+
+    def __init__(self, status: Message, min_interval: float = 4.0):
+        self.status = status
+        self.min_interval = min_interval
+        self._last = 0.0
+        self._text = ""
+
+    async def set(self, text: str, force: bool = False) -> None:
+        now = time.monotonic()
+        if text == self._text or (not force and now - self._last < self.min_interval):
+            return
+        self._last, self._text = now, text
+        try:
+            await self.status.edit_text(text)
+        except Exception:  # noqa: BLE001 — un affichage raté ne doit jamais arrêter un envoi
+            logger.debug("mise à jour du message d'état impossible", exc_info=True)
+
+
+def _transfer_cb(ui: _StatusUpdater, label: str):
+    """Callback de progression pour download_media / send_document."""
+    t0 = time.monotonic()
+
+    async def cb(current: int, total: int) -> None:
+        if not total:
+            return
+        pct = current * 100 / total
+        speed = current / max(time.monotonic() - t0, 0.001)
+        eta = (total - current) / speed if speed else 0
+        await ui.set(
+            f"{label}\n{_bar(pct)} {pct:.0f} %\n{_size(current)} / {_size(total)} · {_size(speed)}/s · reste {_eta(eta)}",
+            force=current >= total,
+        )
+
+    return cb
+
+
+_CONVERT_LABELS = {
+    "encode": "🎞️ Encodage en H.264 (vidéo illisible par les navigateurs, c'est long)",
+    "audio": "🔊 Conversion du son en AAC (vidéo copiée)",
+    "copy": "🔧 Conversion en MP4 (copie rapide)",
+}
+
+
+def _convert_cb(ui: _StatusUpdater):
+    """Callback de progression pour media_service.remux_to_mp4."""
+
+    async def cb(done: float, total: float, speed: float | None, mode: str) -> None:
+        label = _CONVERT_LABELS.get(mode, "🔧 Conversion")
+        if total <= 0:
+            return await ui.set(f"{label}\nEn cours… {_eta(done)} de vidéo traitées")
+        pct = min(done * 100 / total, 100)
+        line = f"{_bar(pct)} {pct:.0f} %"
+        if speed and speed > 0:
+            line += f"\nvitesse ×{speed:.2f} · reste {_eta((total - done) / speed)}".replace(".", ",")
+        await ui.set(f"{label}\n{line}")
+
+    return cb
+
+
+async def _mp4_ready(client: Client, message: Message) -> bool | None:
+    """Analyse le début du MP4 sans le télécharger en entier.
+
+    True : lisible tel quel (H.264 8 bits, audio AAC/MP3) ; False : à convertir ;
+    None : impossible de savoir sans tout télécharger (index « moov » placé en fin de fichier).
+    """
+    try:
+        with tempfile.TemporaryDirectory(dir=TMP_DIR) as tmp:
+            head = os.path.join(tmp, "head.mp4")
+            with open(head, "wb") as fh:
+                async for chunk in client.stream_media(message, limit=16):  # 16 premiers Mo
+                    fh.write(chunk)
+            info = await media_service.probe(head)
+    except Exception:  # noqa: BLE001
+        logger.info("analyse rapide du MP4 impossible", exc_info=True)
+        return None
+    return media_service.is_browser_ready(info)
 
 
 def _describe(p: Parsed) -> str:
@@ -345,8 +449,10 @@ def register(bot: Client):
             return await message.reply("Animé introuvable." + (f" Proches :\n{names}" if names else ""))
         _current_anime[uid] = (row.id, time.time())
         _current_movie.discard(uid)
+        _movie_pinned.discard(uid)
         movie = False
         if message.command[0].lower() == "movie":
+            _movie_pinned.add(uid)
             async with async_session() as db:
                 a = await db.get(Anime, row.id)
             if a is not None and a.type == AnimeType.film:
@@ -402,17 +508,31 @@ def register(bot: Client):
                 raise _Stop(_duplicate_message(ctx, language, p.episode))
             caption = f"{ctx['anime_title']} | {p.slot_key} | {p.lang} | {p.episode}"
 
+            ui = _StatusUpdater(status)
             is_mp4 = fname.lower().endswith(".mp4") or (getattr(media, "mime_type", "") == "video/mp4")
             duration = getattr(media, "duration", None)
+            size = getattr(media, "file_size", 0) or 0
             subs = 0
+            reencoded = False
+            unverified = False
             thumb_bytes: bytes | None = None
 
+            # Un MP4 n'est copié tel quel que s'il est vraiment lisible (H.264 8 bits + audio AAC/MP3).
+            direct = False
             if is_mp4:
+                await ui.set("🔎 Vérification du format de la vidéo…", force=True)
+                ready = await _mp4_ready(client, message)
+                if ready is True:
+                    direct = True
+                elif ready is None and size * 2.2 > shutil.disk_usage(TMP_DIR).free:
+                    direct = True      # impossible à vérifier sans tout télécharger, et pas assez de disque
+                    unverified = True
+
+            if direct:
                 # Déjà au bon format : copie directe dans le canal (sans retélécharger).
                 sent = await _channel_send(lambda: message.copy(chat_id=settings.TELEGRAM_CHANNEL_ID, caption=caption))
                 thumb_bytes = await _telegram_thumb(client, media)
             else:
-                size = getattr(media, "file_size", 0) or 0
                 free = shutil.disk_usage(TMP_DIR).free
                 if size * 2.2 > free:
                     raise _Stop(
@@ -420,21 +540,24 @@ def register(bot: Client):
                         "Convertis-le en MP4 sur ton PC (ffmpeg -i in.mkv -c copy -movflags +faststart out.mp4) et renvoie-le."
                     )
                 if _job_lock.locked():
-                    await status.edit_text("⏳ En file d'attente (un fichier est en cours de conversion)…")
+                    await ui.set("⏳ En file d'attente (un fichier est en cours de traitement)…", force=True)
                 async with _job_lock:
+                    # Tout le dossier temporaire (source + MP4 converti) est effacé à la sortie du bloc.
                     with tempfile.TemporaryDirectory(dir=TMP_DIR) as tmp:
-                        await status.edit_text("⬇️ Téléchargement…")
-                        src = await client.download_media(message, file_name=os.path.join(tmp, "src"))
-                        await status.edit_text("🔧 Conversion en MP4…")
+                        await ui.set("⬇️ Téléchargement…", force=True)
+                        src = await client.download_media(
+                            message, file_name=os.path.join(tmp, "src"), progress=_transfer_cb(ui, "⬇️ Téléchargement")
+                        )
                         dst = os.path.join(tmp, f"{p.episode:03d}.mp4")
-                        info = await media_service.remux_to_mp4(src, dst)
-                        os.remove(src)
-                        duration, subs = info["duration"], info["subtitle_tracks"]
+                        info = await media_service.remux_to_mp4(src, dst, on_progress=_convert_cb(ui))
+                        os.remove(src)  # libère le disque dès la conversion finie
+                        duration, subs, reencoded = info["duration"], info["subtitle_tracks"], info["video_reencoded"]
                         thumb_bytes = await media_service.extract_frame(dst, duration)
-                        await status.edit_text("⬆️ Envoi dans le canal…")
+                        await ui.set("⬆️ Envoi dans le canal…", force=True)
                         sent = await _channel_send(
                             lambda: client.send_document(
-                                settings.TELEGRAM_CHANNEL_ID, dst, caption=caption, force_document=True
+                                settings.TELEGRAM_CHANNEL_ID, dst, caption=caption, force_document=True,
+                                progress=_transfer_cb(ui, "⬆️ Envoi dans le canal"),
                             )
                         )
 
@@ -450,6 +573,10 @@ def register(bot: Client):
                 notes.append("aucun emplacement dans la légende : Saison 1")
             if subs:
                 notes.append("pistes de sous-titres séparées ignorées")
+            if reencoded:
+                notes.append("vidéo réencodée en H.264")
+            if unverified:
+                notes.append("⚠️ format non vérifié (fichier trop gros pour l'analyser) : si le lecteur affiche une erreur, réencode-le")
             await status.edit_text(
                 f"✅ {ctx['anime_title']} — {ctx['season_label']} — {p.lang} — épisode {p.episode}"
                 f"{' (remplacé)' if replaced else ''}" + (f"\nℹ️ {' · '.join(notes)}" if notes else "")

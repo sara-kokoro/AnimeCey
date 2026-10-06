@@ -112,6 +112,9 @@ async def lifespan(app: FastAPI):
 
             register_all(bot)
 
+            from services.botpool import register_pool_command
+            register_pool_command(bot)  # /pool : état des bots de streaming
+
             from bot.channel_peer import ensure_channel_peer, register_channel_logger
             register_channel_logger(bot)
 
@@ -124,6 +127,10 @@ async def lifespan(app: FastAPI):
             logger.warning("Telegram bot failed to start: %s. API will run without bot.", exc)
     else:
         logger.info("Telegram bot disabled (ENABLE_TELEGRAM_BOT=false).")
+
+    # Bots de streaming (HELPER_BOT_TOKENS) : démarrent en arrière-plan, indépendamment du bot principal
+    from services import botpool
+    botpool.start_background()
 
     # Synchronisation périodique des liens TMCooper
     from services import tmcooper_sync
@@ -141,6 +148,8 @@ async def lifespan(app: FastAPI):
 
     await catalog_sync.stop_loop()
     await tmcooper_sync.stop_loop()
+
+    await botpool.stop_background()
 
     if bot_running:
         logger.info("Stopping Telegram bot...")
