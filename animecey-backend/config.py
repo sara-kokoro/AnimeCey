@@ -34,12 +34,10 @@ class _Settings:
     TELEGRAM_API_HASH: str = os.getenv("TELEGRAM_API_HASH", "9bce1167e828939f39452795e56202a9")
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "8732815098:AAGwppoI115Z7Y7p5McnW2BN-LanwJpvsOY")
     TELEGRAM_CHANNEL_ID: int = int(os.getenv("TELEGRAM_CHANNEL_ID", "-1003340962000"))
-    # Seul ce compte peut ajouter un animé au catalogue (recherche > « Ajouter »)
-    ADD_ANIME_EMAIL: str = os.getenv("ADD_ANIME_EMAIL", "admin@animecey.app")
     # access_hash du canal (voir bot/channel_peer.py) : évite CHANNEL_INVALID après un redémarrage
     TELEGRAM_CHANNEL_ACCESS_HASH: str = os.getenv("TELEGRAM_CHANNEL_ACCESS_HASH", "")
     TELEGRAM_ADMIN_IDS: List[int] = _csv_to_int_list(
-        os.getenv("TELEGRAM_ADMIN_IDS", "8467461906")
+        os.getenv("TELEGRAM_ADMIN_IDS", "8467461906, 6120299142")
     )
 
     # Byse.sx
