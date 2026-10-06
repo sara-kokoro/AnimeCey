@@ -40,6 +40,10 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS thumb_msg_id INTEGER"
         ))
+        # Catégorie : « anime » (animation) ou « live » (films et séries avec de vrais acteurs)
+        await conn.execute(text(
+            "ALTER TABLE animes ADD COLUMN IF NOT EXISTS category VARCHAR(10) NOT NULL DEFAULT 'anime'"
+        ))
         # Type d'emplacement (saison, saga, film, oav...) pour les filtres et les icônes
         await conn.execute(text(
             "ALTER TABLE anime_seasons ADD COLUMN IF NOT EXISTS kind VARCHAR(16)"

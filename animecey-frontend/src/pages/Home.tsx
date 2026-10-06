@@ -7,7 +7,8 @@ import { HorizontalScroll } from "@/components/ui/HorizontalScroll";
 import { RankedRow } from "@/components/home/RankedRow";
 import { AnimeCard } from "@/components/anime/AnimeCard";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
-import { fetchFeatured, fetchTopWeek, fetchTopRated, fetchLatest, fetchTrending } from "@/api/animes";
+import { LiveHome } from "@/components/home/LiveHome";
+import { fetchLiveHome, fetchTopWeek, fetchTopRated, fetchLatest, fetchTrending } from "@/api/animes";
 import { motion } from "framer-motion";
 
 function CardList({ data, isLoading }: { data?: unknown[]; isLoading: boolean }) {
@@ -28,6 +29,11 @@ export default function Home() {
   const topRated = useQuery({ queryKey: ["top-rated"], queryFn: fetchTopRated });
   const latest = useQuery({ queryKey: ["latest"], queryFn: fetchLatest });
   const trending = useQuery({ queryKey: ["trending"], queryFn: fetchTrending });
+  // Films & séries (live-action) : une requête pour toute la zone ; rien ne s'affiche s'il n'y en a pas encore
+  const live = useQuery({ queryKey: ["live-home"], queryFn: fetchLiveHome, staleTime: 60_000 });
+  const hasLive = !!live.data && (live.data.featured.length > 0 || live.data.latest.length > 0);
+
+  const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
     <motion.div
@@ -40,6 +46,23 @@ export default function Home() {
       <HeroCarousel />
 
       <main className="mx-auto max-w-7xl px-4 md:px-6">
+        {hasLive && (
+          <div className="mt-6 flex gap-2">
+            <button
+              onClick={() => jump("animes")}
+              className="px-4 py-2 rounded-full bg-primary text-primary-foreground text-sm font-body font-semibold"
+            >
+              Animés
+            </button>
+            <button
+              onClick={() => jump("films-series")}
+              className="px-4 py-2 rounded-full bg-surface border border-border-subtle text-foreground text-sm font-body font-semibold hover:bg-surface-2 transition-colors"
+            >
+              Films &amp; Séries
+            </button>
+          </div>
+        )}
+        <div id="animes" className="scroll-mt-24" />
         {(topWeek.isLoading || (topWeek.data && topWeek.data.length > 0)) && (
           <Section title="Top 10 de la semaine">
             <HorizontalScroll>
@@ -66,6 +89,12 @@ export default function Home() {
               <CardList data={trending.data} isLoading={trending.isLoading} />
             </HorizontalScroll>
           </Section>
+        )}
+
+        {hasLive && live.data && (
+          <div id="films-series" className="scroll-mt-24 pb-6">
+            <LiveHome data={live.data} />
+          </div>
         )}
       </main>
 

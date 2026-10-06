@@ -32,7 +32,7 @@ from sqlalchemy import select
 from bot.handlers.admin import is_admin
 from config import settings
 from database import async_session
-from models import Anime, Episode, LanguageEnum
+from models import Anime, AnimeType, Episode, LanguageEnum
 from models_catalog import AnimeSeason
 from services import media as media_service
 from services.caption_parser import (
@@ -54,6 +54,8 @@ _job_lock = asyncio.Semaphore(1)   # un seul téléchargement + conversion à la
 _current_anime: dict[int, tuple[int, float]] = {}  # admin_id -> (anime_id, horodatage)
 # admin_id -> (langue forcée | None, emplacement forcé | None) ; vit aussi longtemps que /anime
 _current_opts: dict[int, tuple[str | None, str | None]] = {}
+# admin_id présents ici : /movie sur un film -> chaque fichier est l'épisode 1 du « Film 1 » (la légende peut être vide)
+_current_movie: set[int] = set()
 _send_lock = asyncio.Lock()          # envois vers le canal un par un (évite les FLOOD_WAIT)
 _tasks: set[asyncio.Task] = set()      # références aux traitements en cours (évite qu'ils soient ramassés)
 
@@ -280,7 +282,7 @@ def _is_video(message: Message) -> bool:
 
 def register(bot: Client):
 
-    @bot.on_message(filters.private & filters.command("anime"))
+    @bot.on_message(filters.private & filters.command(["anime", "movie"]))
     async def cmd_anime(client: Client, message: Message):
         if not message.from_user or not is_admin(message.from_user.id):
             return
@@ -330,8 +332,23 @@ def register(bot: Client):
             names = "\n".join(f"• {c.id} — {c.title}" for c in candidates)
             return await message.reply("Animé introuvable." + (f" Proches :\n{names}" if names else ""))
         _current_anime[uid] = (row.id, time.time())
+        _current_movie.discard(uid)
+        movie = False
+        if message.command[0].lower() == "movie":
+            async with async_session() as db:
+                a = await db.get(Anime, row.id)
+            if a is not None and a.type == AnimeType.film:
+                movie = True
+                slot = slot or "film1"
+                _current_movie.add(uid)
         _current_opts[uid] = (lang, slot)
-        await message.reply(f"✅ Animé fixé : {row.title} (3 h){_opts_text(lang, slot)}. Envoie tes fichiers.")
+        if movie:
+            return await message.reply(
+                f"✅ Film fixé : {row.title} (3 h){_opts_text(lang, None)}. "
+                "Envoie ou transfère la vidéo : elle sera rangée toute seule (VF ou VOSTFR, "
+                "lis la légende, ou refais /movie " + str(row.id) + " VF)."
+            )
+        await message.reply(f"✅ {'Titre' if message.command[0].lower() == 'movie' else 'Animé'} fixé : {row.title} (3 h){_opts_text(lang, slot)}. Envoie tes fichiers.")
 
     async def _process(client: Client, message: Message):
         media = message.video or message.document
@@ -350,7 +367,9 @@ def register(bot: Client):
             forced_lang, forced_slot = _current_opts.get(uid, (None, None))
             if forced_lang:
                 p = replace(p, lang=forced_lang, multi=False)
-            if forced_slot:
+            if uid in _current_movie:  # film : un seul fichier par langue = épisode 1
+                p = replace(p, slot_key="film1", slot_defaulted=False, episode=1)
+            elif forced_slot:
                 p = replace(p, slot_key=forced_slot, slot_defaulted=False)
                 if kind_of(forced_slot) == "film" and p.episode is None:
                     p = replace(p, episode=1)

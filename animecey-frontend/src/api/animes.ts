@@ -18,6 +18,7 @@ export interface AnimeFilters {
   language?: string;
   year?: number;
   q?: string;
+  category?: string;
 }
 
 export async function fetchAnimes(filters: AnimeFilters = {}): Promise<PaginatedAnimes> {
@@ -50,6 +51,22 @@ export async function fetchTopRated(): Promise<Anime[]> {
 
 export async function fetchLatest(): Promise<Anime[]> {
   const res = await api.get("/animes/latest");
+  return res.data;
+}
+
+export interface LiveHomeData {
+  featured: Anime[];
+  top_week: Anime[];
+  new_releases: Anime[];
+  top_rated: Anime[];
+  latest: Anime[];
+  films: Anime[];
+  series: Anime[];
+  genres: { genre: string; items: Anime[] }[];
+}
+
+export async function fetchLiveHome(): Promise<LiveHomeData> {
+  const res = await api.get("/animes/live-home");
   return res.data;
 }
 

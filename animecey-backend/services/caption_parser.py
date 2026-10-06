@@ -31,9 +31,11 @@ _NOISE = re.compile(
 )
 _LANG = re.compile(r"(?<![\w])(vostfr|vost|truefrench|french|vff|vfq|vfi|vf|multi)(?![\w])", re.I)
 
-_SXXEYY = re.compile(r"(?<![A-Za-z])S(\d{1,2})\s*E(\d{1,4})(?![\w])", re.I)
-_SEASON = re.compile(r"(?<![\w])(?:saison|season)\s*(\d{1,2})(?![\w])|(?<![\w])S(\d{1,2})(?![\w])", re.I)
-_PART = re.compile(r"\s*[-–—·,]?\s*(?:partie|part|cour)\s*(\d)(?![\w])", re.I)
+_SXXEYY = re.compile(r"(?<![A-Za-z])S(\d{1,2})(?:\s*(?:partie|part|pt|p)\s*(\d))?\s*E(\d{1,4})(?![\w])", re.I)
+_SEASON = re.compile(r"(?<![\w])(?:saison|season)\s*(\d{1,2})(?![\w])|(?<![\w])S(\d{1,2})(?:(?![\w])|(?=P\d(?![\w])))", re.I)
+_PART = re.compile(r"\s*[-–—·,]?\s*(?:partie|part|pt|cour|p)\s*(\d)(?![\w])", re.I)
+_PART_AFTER = re.compile(r"(?<![\w])(?:partie|part|pt|cour)\s*(\d)(?![\w])", re.I)
+_PART_AFTER_P = re.compile(r"(?<![\w])p\s*(\d)(?![\w])", re.I)
 _SAGA = re.compile(r"(?<![\w])saga\s*(\d{1,2})(?![\w])(?:\s*\([^)]*\))?", re.I)
 _FILM = re.compile(r"(?<![\w])films?(?![\w])(?:\s*(\d{1,2})(?![\w]))?", re.I)
 _OAV = re.compile(r"(?<![\w])(?:oav|ova|oad)(?![\w])", re.I)
@@ -136,7 +138,8 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
     slot, episode = None, None
     m = _SXXEYY.search(work)
     if m:
-        slot, episode = f"saison{int(m.group(1))}", int(m.group(2))
+        slot = f"saison{int(m.group(1))}" + (f"partie{int(m.group(2))}" if m.group(2) else "")
+        episode = int(m.group(3))
         starts.append(m.start()); work = _blank(work, m)
     if slot is None:
         m = _SEASON.search(work)
@@ -168,6 +171,13 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
         m = _EP_WORD.search(work) or _EP_E.search(work)
         if m:
             episode = int(m.group(1)); starts.append(m.start()); work = _blank(work, m)
+    # Partie notée APRÈS l'épisode : « S02 Ep01 part 2 », « S02E01 Partie 2 ».
+    # (« p 2 » seul n'est accepté que si l'épisode a été écrit explicitement : Ep / E.)
+    if slot and slot.startswith("saison") and "partie" not in slot:
+        pm = _PART_AFTER.search(work) or (_PART_AFTER_P.search(work) if episode is not None else None)
+        if pm:
+            slot += f"partie{int(pm.group(1))}"; work = _blank(work, pm)
+
     if episode is None:
         nums = [n for n in _NUMBER.finditer(work) if not (1900 <= int(n.group(1)) <= 2099)]
         if nums:
@@ -199,7 +209,7 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
 
 _ARG_LANG = re.compile(r"(?:^|\s)(vostfr|vost|vff|vfq|vf)$", re.I)
 _ARG_SEASON = re.compile(
-    r"(?:^|\s)(?:saison|season|s)\s*(\d{1,2})(?:\s*(?:partie|part|cour)\s*(\d))?$", re.I
+    r"(?:^|\s)(?:saison|season|s)\s*(\d{1,2})(?:\s*[-–—·,]?\s*(?:partie|part|pt|cour|p)\s*(\d))?$", re.I
 )
 _ARG_SAGA = re.compile(r"(?:^|\s)saga\s*(\d{1,2})$", re.I)
 _ARG_FILM = re.compile(r"(?:^|\s)films?(?:\s*(\d{1,2}))?$", re.I)

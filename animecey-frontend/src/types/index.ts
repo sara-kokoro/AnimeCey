@@ -13,6 +13,7 @@ export interface Anime {
   score: number;
   year: number;
   trailer_url?: string;
+  category?: "anime" | "live";
   languages_available: Language[];
   seasons_count: number;
   episodes_count: number;
@@ -22,6 +23,7 @@ export interface CatalogFilters {
   query?: string;
   genres?: string[];
   type?: "all" | "serie" | "film";
+  category?: "all" | "anime" | "live";
   language?: "all" | "VF" | "VOSTFR" | "BOTH";
   status?: "all" | "ongoing" | "completed" | "upcoming";
   year?: number | "all";

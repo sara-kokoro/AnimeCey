@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { SlidersHorizontal, X } from "lucide-react";
@@ -20,11 +20,15 @@ interface Props {
 export default function Catalogue({ presetType, title, subtitle }: Props = {}) {
   const params = useParams();
   const genreParam = params.slug ? decodeURIComponent(params.slug) : undefined;
+  const [searchParams] = useSearchParams();
+  const catParam = searchParams.get("category");
+  const initialCategory: "all" | "anime" | "live" = catParam === "live" || catParam === "anime" ? catParam : "all";
 
   const [filters, setFilters] = useState<CatalogFilters>({
     type: presetType ?? "all",
     genres: genreParam ? [genreParam] : [],
     sort: "az",
+    category: initialCategory,
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -39,6 +43,7 @@ export default function Catalogue({ presetType, title, subtitle }: Props = {}) {
     language: filters.language !== "all" ? filters.language : undefined,
     year: filters.year && filters.year !== "all" ? (filters.year as number) : undefined,
     q: filters.query,
+    category: filters.category !== "all" ? filters.category : undefined,
   };
 
   const { data, isLoading } = useQuery({
@@ -51,6 +56,7 @@ export default function Catalogue({ presetType, title, subtitle }: Props = {}) {
       type: presetType ?? "all",
       genres: genreParam ? [genreParam] : [],
       sort: filters.sort,
+      category: filters.category,
     });
 
   const headerTitle = title ?? (genreParam ? `Animés • ${genreParam}` : "Catalogue");
@@ -85,6 +91,22 @@ export default function Catalogue({ presetType, title, subtitle }: Props = {}) {
             <SlidersHorizontal className="w-4 h-4" />
             Filtres
           </button>
+        </div>
+
+        <div className="mt-5">
+          <ToggleGroup2
+            size="sm"
+            value={filters.category ?? "all"}
+            onChange={(v) => {
+              setPage(1);
+              setFilters({ ...filters, category: v as CatalogFilters["category"] });
+            }}
+            options={[
+              { value: "all", label: "Tout" },
+              { value: "anime", label: "Animés" },
+              { value: "live", label: "Films & séries" },
+            ]}
+          />
         </div>
 
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6 lg:gap-10">

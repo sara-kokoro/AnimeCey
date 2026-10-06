@@ -85,6 +85,7 @@ class AnimePublic(BaseModel):
     score: float = 0.0
     year: Optional[int] = None
     trailer_url: Optional[str] = None
+    category: str = "anime"
     languages_available: List[str] = []
     seasons_count: int = 0
     episodes_count: int = 0

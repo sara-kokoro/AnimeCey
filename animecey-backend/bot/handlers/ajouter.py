@@ -21,7 +21,7 @@ from bot.handlers.admin import is_admin
 from database import async_session
 from models import Anime, AnimeStatus, AnimeType
 from models_catalog import AnimeSeason
-from services import catalog_meta, tmdb
+from services import aliases, catalog_meta, tmdb
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +57,8 @@ def season_slots(details: dict, media: str) -> list[tuple[str, str]]:
     return [(f"saison{n}", f"Saison {n}") for n in (numbers or [1])]
 
 
-async def _create(media: str, tmdb_id: int) -> str:
-    """Crée l'animé. Lève ValueError(message) si impossible."""
+async def _create(media: str, tmdb_id: int, category: str = "anime") -> str:
+    """Crée la fiche (category « anime » ou « live »). Lève ValueError(message) si impossible."""
     async with async_session() as db:
         taken = (await db.execute(select(Anime.id, Anime.title).where(Anime.tmdb_id == tmdb_id))).first()
         if taken:
@@ -74,7 +74,8 @@ async def _create(media: str, tmdb_id: int) -> str:
             raise ValueError(f"Un animé « {title} » existe déjà (n°{same[0]}). Utilise /fiche {same[0]} pour changer sa fiche.")
 
         al = None
-        for name in (details.get("original_name") or details.get("original_title"), title):
+        # Films et séries live-action : pas de recherche AniList (risque de fausse correspondance)
+        for name in () if category == "live" else (details.get("original_name") or details.get("original_title"), title):
             if not name:
                 continue
             try:
@@ -105,6 +106,7 @@ async def _create(media: str, tmdb_id: int) -> str:
             tmdb_id=tmdb_id,
             anilist_id=meta.get("anilist_id"),
             trailer_url=meta.get("trailer_url"),
+            category=category,
         )
         db.add(anime)
         await db.flush()
@@ -117,11 +119,28 @@ async def _create(media: str, tmdb_id: int) -> str:
             )
         await db.commit()
         names = ", ".join(label for _, label in slots)
+        anime_id, anime_title, anime_type = anime.id, anime.title, anime.type
+        original = (details.get("original_name") or details.get("original_title") or "").strip()
+
+    # Autres noms pour la recherche (titre d'origine ; AniList pour les animés)
+    if category == "live":
+        await aliases.add_aliases(anime_id, [anime_title, original])
+        if anime_type == AnimeType.film:
+            return (
+                f"✅ Film « {anime_title} » ajouté (n°{anime_id}).\n"
+                f"Envoie le fichier : /movie {anime_id} VF (ou VOSTFR), puis envoie ou transfère la vidéo."
+            )
         return (
-            f"✅ « {anime.title} » ajouté (n°{anime.id}) — {names}.\n"
-            f"Envoie maintenant tes épisodes : /anime {anime.id} puis les fichiers, "
-            f"ou une légende du genre « {anime.title} S01E01 VOSTFR »."
+            f"✅ Série « {anime_title} » ajoutée (n°{anime_id}) — {names}.\n"
+            f"Envoie les épisodes : /movie {anime_id}, puis les fichiers avec une légende du genre "
+            f"« {anime_title} S01E01 VF »."
         )
+    aliases.schedule_sync(anime_id)
+    return (
+        f"✅ « {anime_title} » ajouté (n°{anime_id}) — {names}.\n"
+        f"Envoie maintenant tes épisodes : /anime {anime_id} puis les fichiers, "
+        f"ou une légende du genre « {anime_title} S01E01 VOSTFR »."
+    )
 
 
 def register(bot: Client):

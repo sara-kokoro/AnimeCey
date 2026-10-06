@@ -10,6 +10,8 @@ from bot.handlers.bilan import register as register_bilan
 from bot.handlers.ajouter import register as register_ajouter
 from bot.handlers.supprimer import register as register_supprimer
 from bot.handlers.alias import register as register_alias
+from bot.handlers.delsaison import register as register_delsaison
+from bot.handlers.live import register as register_live
 
 
 def register_all(bot):
@@ -20,6 +22,8 @@ def register_all(bot):
     register_ajouter(bot)       # /ajouter : ajouter un animé absent du catalogue
     register_supprimer(bot)     # /supprimer : supprimer un animé (avec confirmation)
     register_alias(bot)         # /alias : autres noms d'un animé (recherche)
+    register_delsaison(bot)     # /delsaison : supprimer une seule saison
+    register_live(bot)          # /add : films et séries live-action (TMDB)
     register_admin(bot)
     register_upload(bot)
     register_callbacks(bot)

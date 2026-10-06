@@ -95,6 +95,8 @@ class Anime(Base):
     anilist_id: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True)
     trailer_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
+    # « anime » (animation) ou « live » (films et séries avec de vrais acteurs)
+    category: Mapped[str] = mapped_column(String(10), nullable=False, default="anime", server_default="anime")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow

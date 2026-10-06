@@ -35,7 +35,7 @@ const App = () => (
           <Route path="/watch/:id" element={<Watch />} />
           <Route path="/search" element={<Search />} />
           <Route path="/catalogue" element={<Catalogue />} />
-          <Route path="/films" element={<Catalogue presetType="film" title="Films" subtitle="Longs métrages d'animation, soigneusement sélectionnés." />} />
+          <Route path="/films" element={<Catalogue presetType="film" title="Films" subtitle="Longs métrages : animation et prises de vue réelles." />} />
           <Route path="/series" element={<Catalogue presetType="serie" title="Séries" subtitle="Des sagas épiques aux tranches de vie intimistes." />} />
           <Route path="/genres" element={<Genres />} />
           <Route path="/genre/:slug" element={<Catalogue />} />
