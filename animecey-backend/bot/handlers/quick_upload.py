@@ -100,6 +100,16 @@ async def _resolve_anime(db, title: str | None, admin_id: int | None):
     return None, candidates
 
 
+async def _fixed_anime(db, admin_id: int | None):
+    """Animé fixé par /anime ou /movie (encore actif), sinon None. Il passe AVANT le titre lu dans
+    la légende ou le nom du fichier : « Deadpool.2.2018.avi » donne le titre « Deadpool », qui
+    retomberait sur le film 1 alors que tu as fixé le film 2."""
+    cur = _current_anime.get(admin_id) if admin_id else None
+    if not cur or time.time() - cur[1] >= CURRENT_TTL:
+        return None
+    return (await db.execute(select(Anime.id, Anime.title, Anime.title_jp).where(Anime.id == cur[0]))).first()
+
+
 async def _find_or_create_season(db, anime_id: int, key: str) -> AnimeSeason:
     seasons = (await db.execute(select(AnimeSeason).where(AnimeSeason.anime_id == anime_id))).scalars().all()
     for s in seasons:
@@ -179,7 +189,9 @@ def _describe(p: Parsed) -> str:
 async def _prepare(admin_id: int, p: Parsed) -> dict:
     async with _db_lock:
         async with async_session() as db:
-            row, candidates = await _resolve_anime(db, p.title, admin_id)
+            row, candidates = await _fixed_anime(db, admin_id), []
+            if row is None:
+                row, candidates = await _resolve_anime(db, p.title, admin_id)
             if row is None:
                 if candidates:
                     names = "\n".join(f"• {c.id} — {c.title}" for c in candidates)

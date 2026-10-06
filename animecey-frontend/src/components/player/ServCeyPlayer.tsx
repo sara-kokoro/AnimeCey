@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
-  FastForward,
   Loader2,
   Maximize,
   Minimize,
@@ -28,8 +27,6 @@ interface Props {
   /** Passe à l'épisode suivant (bouton + lecture automatique à la fin). */
   onNext?: () => void;
   hasNext?: boolean;
-  /** Durée du saut d'intro, en secondes (0 pour masquer le bouton). */
-  skipIntroSeconds?: number;
 }
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -70,7 +67,6 @@ export function ServCeyPlayer({
   onReady,
   onNext,
   hasNext = false,
-  skipIntroSeconds = 85,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -201,11 +197,6 @@ export function ServCeyPlayer({
       /* non pris en charge */
     }
   }, []);
-
-  const skipIntro = useCallback(() => {
-    seekBy(skipIntroSeconds);
-    showNotice(`Intro passée (+${skipIntroSeconds} s)`);
-  }, [seekBy, skipIntroSeconds, showNotice]);
 
   /* ── événements de la vidéo ─────────────────────────────────────────── */
   useEffect(() => {
@@ -402,7 +393,6 @@ export function ServCeyPlayer({
   const pct = duration ? (current / duration) * 100 : 0;
   const bufPct = duration ? (buffered / duration) * 100 : 0;
   const VolIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
-  const showSkipIntro = skipIntroSeconds > 0 && current > 8 && current < 240 && !error;
   const show = controlsVisible || !playing || menuOpen;
 
   return (
@@ -508,17 +498,6 @@ export function ServCeyPlayer({
             </button>
           </div>
         </div>
-      )}
-
-      {/* Bouton « Passer l'intro » */}
-      {showSkipIntro && show && (
-        <button
-          onClick={(e) => { e.stopPropagation(); skipIntro(); }}
-          className="absolute right-3 bottom-20 md:bottom-24 inline-flex items-center gap-2 rounded-lg border border-white/30 bg-black/60 backdrop-blur px-3.5 py-2 text-xs md:text-sm font-body font-semibold text-white hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors"
-        >
-          <FastForward className="w-4 h-4" />
-          Passer l'intro
-        </button>
       )}
 
       {/* Barre du haut */}
