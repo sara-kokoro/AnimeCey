@@ -66,7 +66,7 @@ class _Settings:
     CORS_ORIGINS: List[str] = [
         o.strip()
         for o in os.getenv(
-            "CORS_ORIGINS", "http://localhost:5173,https://jessicanime.vercel.app,https://animecey.vercel.app"
+            "CORS_ORIGINS", "http://localhost:5173,https://jessicanime.vercel.app,https://animecey.vercel.app,https://magi-stream.online"
         ).split(",")
         if o.strip()
     ]
