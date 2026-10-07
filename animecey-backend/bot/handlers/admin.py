@@ -165,7 +165,17 @@ def register(bot: Client):
                 session.selected_language = None
                 session.selected_season = None
                 await db.commit()
-        await message.reply("Opération annulée.")
+        # Arrête réellement les envois en cours (téléchargement, conversion, envoi) ou en attente
+        from bot.handlers.quick_upload import cancel_jobs
+
+        stopped = cancel_jobs(message.from_user.id)
+        if stopped:
+            await message.reply(
+                f"🛑 {stopped} envoi{'s' if stopped > 1 else ''} arrêté{'s' if stopped > 1 else ''} "
+                "(téléchargement, conversion ou envoi). Les fichiers temporaires sont effacés."
+            )
+        else:
+            await message.reply("Aucun envoi en cours. Opération annulée.")
 
     @bot.on_message(filters.command("list") & filters.private)
     async def cmd_list(client: Client, message: Message):

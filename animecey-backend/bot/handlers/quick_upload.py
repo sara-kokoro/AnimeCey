@@ -60,6 +60,19 @@ _current_movie: set[int] = set()
 _movie_pinned: set[int] = set()
 _send_lock = asyncio.Lock()          # envois vers le canal un par un (évite les FLOOD_WAIT)
 _tasks: set[asyncio.Task] = set()      # références aux traitements en cours (évite qu'ils soient ramassés)
+_jobs: dict[int, set[asyncio.Task]] = {}   # traitements en cours ou en attente, par admin (pour /cancel)
+
+
+def cancel_jobs(user_id: int) -> int:
+    """Arrête les envois de cet admin : téléchargement, conversion, envoi, ou en file d'attente.
+
+    Annuler une tâche interrompt l'opération en cours : le téléchargement s'arrête, ffmpeg est tué et
+    le dossier temporaire est effacé (voir _process). Renvoie le nombre de traitements arrêtés.
+    """
+    tasks = [t for t in _jobs.get(user_id, ()) if not t.done()]
+    for t in tasks:
+        t.cancel()
+    return len(tasks)
 
 
 class _Stop(Exception):
@@ -496,6 +509,9 @@ def register(bot: Client):
             p = replace(p, slot_key="film1", slot_defaulted=False, episode=1)  # > 70 min : c'est un film
 
         status = await message.reply("⏳ Analyse…")
+        sent = None            # message envoyé dans le canal
+        thumb_msg_id = None    # vignette envoyée dans le canal
+        saved = False          # enregistré en base ?
         try:
             if p.episode is None:
                 raise _Stop(f"Numéro d'épisode introuvable.\nCompris : {_describe(p)}")
@@ -565,6 +581,7 @@ def register(bot: Client):
             replaced = await _save_episode(
                 ctx, language, p.episode, sent, duration, allow_replace=replace_ok, thumb_msg_id=thumb_msg_id
             )
+            saved = True
 
             notes = []
             if p.multi:
@@ -581,6 +598,21 @@ def register(bot: Client):
                 f"✅ {ctx['anime_title']} — {ctx['season_label']} — {p.lang} — épisode {p.episode}"
                 f"{' (remplacé)' if replaced else ''}" + (f"\nℹ️ {' · '.join(notes)}" if notes else "")
             )
+        except asyncio.CancelledError:
+            # /cancel : tout s'est arrêté (téléchargement, ffmpeg, envoi). Si un fichier est déjà parti dans
+            # le canal sans être enregistré en base, on le retire pour ne pas laisser d'orphelin.
+            if not saved:
+                for orphan in (sent.id if sent is not None else None, thumb_msg_id):
+                    if orphan:
+                        try:
+                            await client.delete_messages(settings.TELEGRAM_CHANNEL_ID, orphan)
+                        except Exception:  # noqa: BLE001
+                            logger.warning("message orphelin %s non supprimé", orphan, exc_info=True)
+            try:
+                await status.edit_text("🛑 Annulé : traitement arrêté, fichiers temporaires effacés.")
+            except Exception:  # noqa: BLE001
+                pass
+            raise
         except _Stop as stop:
             await status.edit_text(str(stop))
         except media_service.MediaError as exc:
@@ -595,7 +627,18 @@ def register(bot: Client):
             return
         # Traitement en tâche de fond : sinon les fichiers en attente occupent tous les
         # « workers » du bot et il ne répond plus aux autres commandes.
+        uid = message.from_user.id
         task = asyncio.create_task(_process(client, message))
         _tasks.add(task)
-        task.add_done_callback(_tasks.discard)
+        _jobs.setdefault(uid, set()).add(task)
+
+        def _finished(t: asyncio.Task, uid: int = uid) -> None:
+            _tasks.discard(t)
+            mine = _jobs.get(uid)
+            if mine is not None:
+                mine.discard(t)
+                if not mine:
+                    _jobs.pop(uid, None)
+
+        task.add_done_callback(_finished)
         raise StopPropagation  # empêche l'ancien système /upload de retraiter le fichier
