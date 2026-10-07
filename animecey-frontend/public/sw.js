@@ -1,6 +1,6 @@
-/* AnimeCey Push Notification Service Worker */
+/* Magi-Stream Push Notification Service Worker */
 self.addEventListener("push", (event) => {
-  let data = { title: "AnimeCey", body: "Nouvelle notification" };
+  let data = { title: "Magi-Stream", body: "Nouvelle notification" };
   try {
     data = event.data.json();
   } catch {

@@ -64,7 +64,7 @@ export function HeroCarousel() {
         <div className="absolute -top-24 -right-24 w-[420px] h-[420px] rounded-full bg-primary/10 blur-3xl" />
         <div className={"relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 pb-14 md:pb-20 " + (isLoading ? "animate-pulse" : "")}>
           <h1 className="font-display font-extrabold text-4xl md:text-6xl text-foreground leading-[1.05]">
-            Anime<span className="text-primary">Cey</span>
+            Magi-<span className="text-primary">Stream</span>
           </h1>
           <p className="mt-3 max-w-xl text-muted-foreground font-body md:text-lg">
             {isLoading ? "Chargement des animés…" : "Tes animés en VF et VOSTFR, sans pub."}

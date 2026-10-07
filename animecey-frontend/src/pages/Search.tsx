@@ -75,7 +75,7 @@ export default function Search() {
     else setParams({}, { replace: true });
   }, [debounced, setParams]);
 
-  // Animés d'AnimeCey (recherche floue : accents, fautes, autres noms)
+  // Animés de Magi-Stream (recherche floue : accents, fautes, autres noms)
   const animes = useQuery({
     queryKey: ["search-animes", debounced, page],
     queryFn: () => fetchAnimes({ q: debounced, page, limit: PAGE_SIZE }),
@@ -176,10 +176,10 @@ export default function Search() {
           {canAdd && debounced && (
             <section className="mt-14">
               <h2 className="font-display font-bold text-xl mb-1 inline-flex items-center gap-2">
-                <Plus className="w-5 h-5 text-primary" /> Ajouter à AnimeCey
+                <Plus className="w-5 h-5 text-primary" /> Ajouter à Magi-Stream
               </h2>
               <p className="text-sm text-muted-foreground font-body mb-5">
-                Titres du catalogue qui ne sont pas encore dans AnimeCey. Clique sur un titre pour l'ajouter.
+                Titres du catalogue qui ne sont pas encore dans Magi-Stream. Clique sur un titre pour l'ajouter.
               </p>
               {catalog.isLoading ? (
                 <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -192,7 +192,7 @@ export default function Search() {
                     onOpen={handleOpen}
                     openingId={openingId}
                     emptyMessage="Rien à ajouter pour cette recherche"
-                    emptyHint="Tous les titres correspondants sont déjà dans AnimeCey."
+                    emptyHint="Tous les titres correspondants sont déjà dans Magi-Stream."
                   />
                   <Pager page={catPage} pages={catalog.data?.pages ?? 1} onChange={setCatPage} />
                 </>

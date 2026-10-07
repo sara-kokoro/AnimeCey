@@ -1,4 +1,4 @@
-"""AnimeCey — FastAPI + Pyrogram entrypoint.
+"""Magi-Stream — FastAPI + Pyrogram entrypoint.
 
 Runs both the FastAPI web server and the Pyrogram Telegram bot in the
 same asyncio event loop.
@@ -159,9 +159,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AnimeCey API",
+    title="Magi-Stream API",
     version="1.0.0",
-    description="API backend for AnimeCey anime streaming platform",
+    description="API backend for Magi-Stream anime streaming platform",
     lifespan=lifespan,
 )
 

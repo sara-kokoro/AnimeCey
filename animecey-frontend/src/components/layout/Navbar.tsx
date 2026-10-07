@@ -59,7 +59,7 @@ export function Navbar() {
     >
       <div className="mx-auto max-w-7xl px-4 md:px-6 h-16 flex items-center justify-between">
         <Link to="/" className="font-display font-extrabold text-2xl tracking-tight">
-          Anime<span className="text-primary">Cey</span>
+          Magi-<span className="text-primary">Stream</span>
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">

@@ -20,7 +20,7 @@ def is_admin(user_id: int) -> bool:
 
 
 HELP_TEXT = (
-    "Bienvenue sur le bot AnimeCey 👋\n"
+    "Bienvenue sur le bot Magi-Stream 👋\n"
     "\n"
     "📤 AJOUTER UN ÉPISODE\n"
     "Envoie ou transfère la vidéo avec une légende. Elle peut être libre, elle doit contenir :\n"
@@ -144,7 +144,7 @@ def register(bot: Client):
             episodes_count = (await db.execute(select(func.count()).select_from(Episode))).scalar() or 0
             users_count = (await db.execute(select(func.count()).select_from(User))).scalar() or 0
         await message.reply(
-            f"📊 Statistiques AnimeCey\n\n"
+            f"📊 Statistiques Magi-Stream\n\n"
             f"Animés : {animes_count}\n"
             f"Épisodes : {episodes_count}\n"
             f"Utilisateurs : {users_count}"

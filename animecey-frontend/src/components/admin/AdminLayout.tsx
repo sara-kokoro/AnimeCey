@@ -30,7 +30,7 @@ function SidebarContent({ username, email, onLogout }: { username: string; email
     <>
       <div className="px-5 py-5">
         <Link to="/" className="font-display font-extrabold text-xl tracking-tight inline-flex items-center gap-2">
-          Anime<span className="text-primary">Cey</span>
+          Magi-<span className="text-primary">Stream</span>
           <span className="text-[10px] uppercase tracking-wider font-body font-bold bg-primary text-primary-foreground px-1.5 py-0.5 rounded">
             Admin
           </span>

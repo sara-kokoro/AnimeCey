@@ -86,7 +86,7 @@ export default function Auth() {
     >
       <header className="px-6 py-5">
         <Link to="/" className="font-display font-extrabold text-2xl tracking-tight">
-          Anime<span className="text-primary">Cey</span>
+          Magi-<span className="text-primary">Stream</span>
         </Link>
       </header>
 

@@ -6,7 +6,7 @@ export function Footer() {
       <div className="mx-auto max-w-7xl px-4 md:px-6 py-12 flex flex-col md:flex-row gap-6 md:items-center md:justify-between">
         <div>
           <p className="font-display font-extrabold text-xl">
-            Anime<span className="text-primary">Cey</span>
+            Magi-<span className="text-primary">Stream</span>
           </p>
           <p className="text-sm text-muted-foreground font-body mt-1">
             Streaming d'animés en VF & VOSTFR.
@@ -19,7 +19,7 @@ export function Footer() {
           <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
         </nav>
         <p className="text-xs font-body text-muted-dim">
-          © {new Date().getFullYear()} AnimeCey
+          © {new Date().getFullYear()} Magi-Stream
         </p>
       </div>
     </footer>

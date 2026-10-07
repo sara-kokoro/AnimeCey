@@ -40,7 +40,7 @@ export default function Notifications() {
           <div>
             <h1 className="font-display font-extrabold text-3xl">Notifications</h1>
             <p className="text-sm text-muted-foreground font-body mt-1">
-              Toutes les annonces de l'équipe AnimeCey.
+              Toutes les annonces de l'équipe Magi-Stream.
             </p>
           </div>
           <button
