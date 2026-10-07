@@ -95,6 +95,8 @@ class Anime(Base):
     anilist_id: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True)
     trailer_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Téléchargement autorisé pour les épisodes de ce titre (réglé avec /dl dans le bot ; éteint par défaut)
+    downloadable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     # « anime » (animation) ou « live » (films et séries avec de vrais acteurs)
     category: Mapped[str] = mapped_column(String(10), nullable=False, default="anime", server_default="anime")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
@@ -207,6 +209,18 @@ class WatchHistory(Base):
     watched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )
+
+
+class DownloadLog(Base):
+    """Un téléchargement d'épisode : sert à la limite par utilisateur et par 24 h."""
+
+    __tablename__ = "download_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    episode_id: Mapped[int] = mapped_column(Integer, ForeignKey("episodes.id", ondelete="CASCADE"), nullable=False)
+    jti: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)  # identifiant du ticket
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
 
 
 class EpisodeLike(Base):

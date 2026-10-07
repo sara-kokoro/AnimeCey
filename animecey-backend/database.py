@@ -44,6 +44,10 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE animes ADD COLUMN IF NOT EXISTS category VARCHAR(10) NOT NULL DEFAULT 'anime'"
         ))
+        # Téléchargement autorisé par titre (commande /dl du bot)
+        await conn.execute(text(
+            "ALTER TABLE animes ADD COLUMN IF NOT EXISTS downloadable BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
         # Type d'emplacement (saison, saga, film, oav...) pour les filtres et les icônes
         await conn.execute(text(
             "ALTER TABLE anime_seasons ADD COLUMN IF NOT EXISTS kind VARCHAR(16)"

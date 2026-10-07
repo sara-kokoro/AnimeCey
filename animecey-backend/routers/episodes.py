@@ -2,19 +2,21 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import get_client_ip, get_current_user, get_current_user_optional
 from config import settings
 from database import get_db
-from models import Episode, EpisodeLike, User
+from models import Anime, DownloadLog, Episode, EpisodeLike, User
 from schemas import EpisodePublic, LikeResponse, StreamResponse
-from services import byse
+from services import byse, downloads
 from services.stream_token import check_token, make_token
 
 logger = logging.getLogger(__name__)
@@ -84,7 +86,9 @@ def _parse_range(header: str | None, size: int) -> tuple[int, int | None] | None
     return start, end
 
 
-async def _telegram_response(ep: Episode, request: Request, db: AsyncSession) -> StreamingResponse:
+async def _telegram_response(
+    ep: Episode, request: Request, db: AsyncSession, download_name: str | None = None
+) -> StreamingResponse:
     """Lit le fichier de l'épisode depuis le canal Telegram (MTProto), avec support de Range.
 
     La lecture est confiée au pool de bots (services/botpool.py) : le bot le moins occupé sert la vidéo,
@@ -118,6 +122,10 @@ async def _telegram_response(ep: Episode, request: Request, db: AsyncSession) ->
         "Accept-Ranges": "bytes",
         "Cache-Control": "private, max-age=3600",
     }
+    if download_name:  # téléchargement : le navigateur enregistre le fichier au lieu de le lire
+        headers["Content-Type"] = "video/mp4"
+        headers["Content-Disposition"] = downloads.content_disposition(download_name)
+        headers["Cache-Control"] = "private, no-store"
     partial = request.headers.get("range") is not None
     if partial:
         headers["Content-Range"] = f"bytes {handle.from_bytes}-{handle.until_bytes}/{handle.file_size}"
@@ -151,6 +159,106 @@ async def get_episode(episode_id: int, db: AsyncSession = Depends(get_db)):
     if not ep:
         raise HTTPException(status_code=404, detail="Épisode introuvable")
     return EpisodePublic.model_validate(ep)
+
+
+async def _downloads_last_day(db: AsyncSession, user_id: int) -> int:
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    result = await db.execute(
+        select(func.count()).select_from(DownloadLog).where(
+            DownloadLog.user_id == user_id, DownloadLog.created_at >= since
+        )
+    )
+    return int(result.scalar_one())
+
+
+async def _downloadable(episode_id: int, db: AsyncSession) -> tuple[Episode, Anime]:
+    """L'épisode et son titre, si le téléchargement est autorisé (/dl dans le bot) et le fichier sur Telegram."""
+    ep = await db.get(Episode, episode_id)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Épisode introuvable")
+    anime = await db.get(Anime, ep.anime_id)
+    if not anime or not anime.downloadable or not (ep.servcey1_available and ep.servcey1_file_id):
+        raise HTTPException(status_code=403, detail="Le téléchargement n'est pas disponible pour cet épisode")
+    return ep, anime
+
+
+@router.get("/{episode_id}/download-info")
+async def download_info(
+    episode_id: int,
+    user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    """Le bouton « Télécharger » ne s'affiche que si downloadable vaut true."""
+    ep = await db.get(Episode, episode_id)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Épisode introuvable")
+    anime = await db.get(Anime, ep.anime_id)
+    ok = bool(anime and anime.downloadable and ep.servcey1_available and ep.servcey1_file_id)
+    remaining = None
+    if ok and user:
+        remaining = max(0, downloads.DAILY_LIMIT - await _downloads_last_day(db, user.id))
+    return {
+        "downloadable": ok,
+        "daily_limit": downloads.DAILY_LIMIT,
+        "remaining": remaining,
+        "wait_seconds": downloads.WAIT_SECONDS,
+    }
+
+
+@router.post("/{episode_id}/download-ticket")
+async def download_ticket(
+    episode_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compte obligatoire. Donne un ticket utilisable après le délai d'attente (pendant lequel s'affiche la pub)."""
+    await _downloadable(episode_id, db)
+    used = await _downloads_last_day(db, user.id)
+    if used >= downloads.DAILY_LIMIT:
+        raise HTTPException(
+            status_code=429, detail=f"Limite atteinte : {downloads.DAILY_LIMIT} téléchargements par 24 h."
+        )
+    return {
+        "ticket": downloads.make_ticket(user.id, episode_id),
+        "wait_seconds": downloads.WAIT_SECONDS,
+        "remaining": downloads.DAILY_LIMIT - used,
+    }
+
+
+@router.get("/{episode_id}/download")
+async def download_file(
+    episode_id: int,
+    request: Request,
+    ticket: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Envoie le fichier de l'épisode (Range accepté pour reprendre) à qui présente un ticket valable."""
+    try:
+        t = downloads.check_ticket(ticket, episode_id)
+    except downloads.TicketError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    ep, anime = await _downloadable(episode_id, db)
+
+    known = (await db.execute(select(DownloadLog.id).where(DownloadLog.jti == t.jti))).first()
+    if not known:  # premier appel de ce ticket : on le compte (les reprises ne recomptent pas)
+        if await _downloads_last_day(db, t.user_id) >= downloads.DAILY_LIMIT:
+            raise HTTPException(
+                status_code=429, detail=f"Limite atteinte : {downloads.DAILY_LIMIT} téléchargements par 24 h."
+            )
+        db.add(DownloadLog(user_id=t.user_id, episode_id=ep.id, jti=t.jti))
+        try:
+            await db.commit()
+        except IntegrityError:  # deux requêtes en même temps : l'autre a déjà compté
+            await db.rollback()
+
+    name = downloads.download_filename(
+        anime.title,
+        anime.type.value == "film",
+        ep.season_number,
+        ep.episode_number,
+        ep.language.value if hasattr(ep.language, "value") else str(ep.language),
+    )
+    return await _telegram_response(ep, request, db, download_name=name)
 
 
 @router.get("/{episode_id}/stream")

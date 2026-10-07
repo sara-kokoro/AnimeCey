@@ -96,6 +96,10 @@ HELP_TEXT = (
     "📊 /bilan <n°>\n"
     "Montre ce qui est en ligne pour un animé : saisons, langues, numéros d'épisodes.\n"
     "\n"
+    "⬇️ /dl <n°> on|off\n"
+    "Autorise ou retire le téléchargement des épisodes d'un titre (à n'activer que pour ce dont tu détiens la licence). "
+    "/dl <n°> montre l'état, /dl seul liste les titres activés.\n"
+    "\n"
     "🔎 /list <titre> — trouver le n° d'un animé\n"
     "📂 /ep <n° dossier> — épisodes d'un dossier\n"
     "📊 /status — statistiques\n"
@@ -176,6 +180,51 @@ def register(bot: Client):
             )
         else:
             await message.reply("Aucun envoi en cours. Opération annulée.")
+
+    @bot.on_message(filters.command("dl") & filters.private)
+    async def cmd_dl(client: Client, message: Message):
+        """/dl <n°> on|off : bouton « Télécharger » pour tous les épisodes d'un titre (anciens et futurs)."""
+        if not is_admin(message.from_user.id):
+            return await message.reply("Accès non autorisé.")
+        from services import downloads
+
+        usage = "Usage : /dl <n°> on|off  (/dl <n°> pour voir l'état, /dl seul pour la liste)"
+        args = message.command[1:]
+        async with async_session() as db:
+            if not args:
+                rows = (
+                    await db.execute(
+                        select(Anime.id, Anime.title).where(Anime.downloadable.is_(True)).order_by(Anime.title).limit(60)
+                    )
+                ).all()
+                if not rows:
+                    return await message.reply("Aucun titre n'est téléchargeable pour l'instant.\n" + usage)
+                lines = [f"⬇️ Téléchargement activé ({len(rows)}) :"] + [f"• {title} (n°{aid})" for aid, title in rows]
+                return await message.reply("\n".join(lines))
+
+            if not args[0].isdigit():
+                return await message.reply(usage)
+            anime = await db.get(Anime, int(args[0]))
+            if not anime:
+                return await message.reply(f"Aucun animé n°{args[0]}. Trouve le n° avec /list <titre>.")
+
+            if len(args) == 1:
+                state = "activé ✅" if anime.downloadable else "désactivé ⛔"
+                return await message.reply(f"{anime.title} (n°{anime.id}) : téléchargement {state}")
+
+            action = args[1].lower()
+            if action not in ("on", "off"):
+                return await message.reply(usage)
+            anime.downloadable = action == "on"
+            await db.commit()
+            if anime.downloadable:
+                return await message.reply(
+                    f"✅ Téléchargement activé : {anime.title} (n°{anime.id}).\n"
+                    f"Tous ses épisodes (anciens et futurs) ont le bouton « Télécharger ». "
+                    f"Compte obligatoire, {downloads.DAILY_LIMIT} téléchargements par 24 h et par utilisateur.\n"
+                    "⚠️ À garder uniquement pour les contenus dont tu détiens la licence."
+                )
+            return await message.reply(f"⛔ Téléchargement désactivé : {anime.title} (n°{anime.id}).")
 
     @bot.on_message(filters.command("list") & filters.private)
     async def cmd_list(client: Client, message: Message):

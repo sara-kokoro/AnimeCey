@@ -7,6 +7,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { ServCeyPlayer } from "@/components/player/ServCeyPlayer";
+import { DownloadButton } from "@/components/player/DownloadButton";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
 import { fetchEpisode, fetchEpisodes, fetchLikeStatus, getStreamUrl, likeEpisode, unlikeEpisode } from "@/api/episodes";
@@ -247,7 +248,8 @@ export default function Watch() {
               )}
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <DownloadButton episodeId={episode.id} />
               <button
                 disabled={!prev}
                 onClick={() => prev && navigate(`/watch/${prev.id}`)}
