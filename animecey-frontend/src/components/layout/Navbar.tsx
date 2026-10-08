@@ -11,6 +11,7 @@ const links = [
   { to: "/films", label: "Films" },
   { to: "/series", label: "Séries" },
   { to: "/genres", label: "Genres" },
+  { to: "/calendrier", label: "Calendrier" },
 ];
 
 export function Navbar() {

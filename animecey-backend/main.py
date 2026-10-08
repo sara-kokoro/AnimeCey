@@ -140,12 +140,17 @@ async def lifespan(app: FastAPI):
     from services import catalog_sync
     catalog_sync.start_loop()
 
+    # Calendrier des sorties (FRAnime) + alertes épinglées aux admins
+    from services import calendar_sync
+    calendar_sync.start_loop()
+
     # Autres noms des animés (recherche floue) : rattrapage en arrière-plan
     from services import aliases as _aliases
     _aliases.start_backfill()
 
     yield
 
+    await calendar_sync.stop_loop()
     await catalog_sync.stop_loop()
     await tmcooper_sync.stop_loop()
 
@@ -176,6 +181,7 @@ app.add_middleware(
 # ── Routers ────────────────────────────────────────────────────────────
 
 from routers import admin, anilist, animes, auth, comments, episodes, folders, notifications, push, search, tmcooper, tmdb, users  # noqa: E402
+from routers import calendar as calendar_router  # noqa: E402
 from routers import catalog as catalog_router  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
@@ -192,6 +198,7 @@ app.include_router(tmcooper.router, prefix="/api/admin/tmcooper", tags=["Admin -
 app.include_router(tmdb.router, prefix="/api/tmdb", tags=["TMDB"])
 app.include_router(anilist.router, prefix="/api/anilist", tags=["AniList"])
 app.include_router(catalog_router.router, prefix="/api/catalog", tags=["Catalog"])
+app.include_router(calendar_router.router, prefix="/api/calendar", tags=["Calendar"])
 
 
 @app.get("/api/health")

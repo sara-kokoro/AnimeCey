@@ -9,6 +9,7 @@ import Watch from "./pages/Watch.tsx";
 import Search from "./pages/Search.tsx";
 import Catalogue from "./pages/Catalogue.tsx";
 import Genres from "./pages/Genres.tsx";
+import Calendrier from "./pages/Calendrier.tsx";
 import Auth from "./pages/Auth.tsx";
 import Profile from "./pages/Profile.tsx";
 import Notifications from "./pages/Notifications.tsx";
@@ -38,6 +39,7 @@ const App = () => (
           <Route path="/films" element={<Catalogue presetType="film" title="Films" subtitle="Longs métrages : animation et prises de vue réelles." />} />
           <Route path="/series" element={<Catalogue presetType="serie" title="Séries" subtitle="Des sagas épiques aux tranches de vie intimistes." />} />
           <Route path="/genres" element={<Genres />} />
+          <Route path="/calendrier" element={<Calendrier />} />
           <Route path="/genre/:slug" element={<Catalogue />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/profile" element={<Profile />} />
