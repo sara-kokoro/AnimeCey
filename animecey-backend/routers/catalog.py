@@ -33,6 +33,7 @@ from database import get_db
 from models import Anime, AnimeStatus, AnimeType, Episode, TmcooperSource, User
 from models_catalog import AnimeSeason, CatalogTitle, EpisodeServer
 from services import aliases, catalog_episodes, catalog_meta, catalog_sync, tmcooper, tmcooper_sync
+from services.caption_parser import kind_of
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +231,7 @@ async def open_title(
             db.add(
                 AnimeSeason(
                     anime_id=anime.id, season_number=number, api_season=key, label=label,
-                    kind=next((k for k in ("saison", "saga", "film", "oav", "special") if key.startswith(k)), "autre"),
+                    kind=kind_of(key),
                 )
             )
             if external:

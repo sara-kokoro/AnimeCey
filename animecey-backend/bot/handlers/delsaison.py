@@ -3,7 +3,7 @@
   /delsaison 16 S02            supprime « Saison 2 » de l'animé 16 (pas « Saison 2 Partie 1 »)
   /delsaison S02               idem, sur l'animé fixé avec /anime
   /delsaison 16 S02 P1         supprime « Saison 2 Partie 1 »
-  /delsaison 16 Saga 2 / Film 1 / OAV
+  /delsaison 16 Saga 2 / Arc 3 / Film 1 / OAV
 
 Le bot résume ce qui va disparaître et demande confirmation avec des boutons.
 """
@@ -23,7 +23,7 @@ from bot.handlers.supprimer import _delete_channel_messages
 from database import async_session
 from models import Anime, Episode, Folder, FolderType, TmcooperSource
 from models_catalog import AnimeSeason
-from services.caption_parser import parse_anime_args, pretty_label
+from services.caption_parser import command_args, parse_anime_args, pretty_label
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +105,9 @@ def register(bot: Client):
             "Usage : /delsaison <n° animé> <saison>\n"
             "Ex. : /delsaison 16 S02 → supprime « Saison 2 » (pas « Saison 2 Partie 1 »)\n"
             "/delsaison 16 S02 P1 → supprime « Saison 2 Partie 1 »\n"
-            "Autres : Saga 2, Film 1, OAV. Sans n°, l'animé fixé avec /anime est utilisé."
+            "Autres : Saga 2, Arc 3, Film 1, OAV, Spécial, Récap, Bonus ou \"Nom libre\". Sans n°, l'animé fixé avec /anime est utilisé."
         )
-        query, _lang, key = parse_anime_args(" ".join(message.command[1:]))
+        query, _lang, key = parse_anime_args(command_args(message.text) or " ".join(message.command[1:]))
         if not key:
             return await message.reply(usage)
 

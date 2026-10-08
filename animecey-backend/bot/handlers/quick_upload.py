@@ -6,8 +6,14 @@ Le fichier est mis dans le canal Telegram privé (stockage), puis rattaché à l
 Commande utile : /anime 42 (ou /anime Black Clover) fixe l'animé pour les envois suivants,
 quand la légende ne contient pas le même nom que dans ta base (ex. « Kage no Jitsuryokusha »
 pour « The Eminence in Shadow »).
-Options facultatives, dans n'importe quel ordre : la langue (VF / VOSTFR) et l'emplacement
-(S01, Saga 2, Film, OAV...) : « /anime 16 VF S01 » force VF + Saison 1 pour tous les envois suivants.
+Options facultatives, dans n'importe quel ordre : la langue (VF / VOSTFR), l'emplacement
+(S01, Saga 2, Arc 3, Film, OAV, Spécial, Récap, Bonus, ou un nom libre entre guillemets) et le mot REMPLACER :
+« /anime 16 VF S01 » force VF + Saison 1 pour tous les envois suivants ;
+« /anime 16 VF S01 remplacer » fait en plus que les fichiers envoyés écrasent les épisodes déjà présents
+(plus besoin d'écrire REMPLACER dans chaque légende).
+
+Vignette : toujours une image prise dans la vidéo à 15 % de sa durée (jamais la miniature Telegram,
+qui peut être personnalisée par celui qui a partagé le fichier).
 """
 
 from __future__ import annotations
@@ -36,9 +42,9 @@ from models import Anime, AnimeType, Episode, LanguageEnum
 from models_catalog import AnimeSeason
 from services import media as media_service
 from services.caption_parser import (
-    Parsed, kind_of, merge_missing, norm, parse_anime_args, parse_caption, pretty_label,
+    Parsed, command_args, kind_of, merge_missing, norm, parse_anime_args_ex, parse_caption, pretty_label,
 )
-from services.filestream import get_media_from_message
+from services.filestream import get_media_from_message, stream_media
 from services.tmcooper_sync import _get_or_create_folder
 
 logger = logging.getLogger(__name__)
@@ -54,6 +60,8 @@ _job_lock = asyncio.Semaphore(1)   # un seul téléchargement + conversion à la
 _current_anime: dict[int, tuple[int, float]] = {}  # admin_id -> (anime_id, horodatage)
 # admin_id -> (langue forcée | None, emplacement forcé | None) ; vit aussi longtemps que /anime
 _current_opts: dict[int, tuple[str | None, str | None]] = {}
+# admin_id présents ici : mode REMPLACER actif (« /anime 16 VF S01 remplacer ») ; vit aussi longtemps que /anime
+_current_replace: set[int] = set()
 # admin_id présents ici : /movie sur un film -> chaque fichier est l'épisode 1 du « Film 1 » (la légende peut être vide)
 _current_movie: set[int] = set()
 # admin_id présents ici : dernière commande = /movie (film, Netflix, Prime Video...) -> l'animé fixé passe AVANT le titre du fichier
@@ -172,17 +180,20 @@ async def _channel_send(factory):
         return await factory()
 
 
-async def _telegram_thumb(client: Client, media) -> bytes | None:
-    """Miniature déjà fournie par Telegram pour cette vidéo (fichiers MP4 transférés)."""
-    thumbs = getattr(media, "thumbs", None) or []
-    if not thumbs:
+async def _remote_thumb(client: Client, sent, duration: int | None) -> bytes | None:
+    """Image à 15 % de la vidéo déjà rangée dans le canal, lue à distance (sans tout télécharger)."""
+    sent_media = get_media_from_message(sent)
+    size = getattr(sent_media, "file_size", 0) or 0
+    if not size:
         return None
-    try:
-        buf = await client.download_media(thumbs[-1].file_id, in_memory=True)
-        return buf.getvalue() if buf else None
-    except Exception:  # noqa: BLE001
-        logger.warning("miniature Telegram indisponible", exc_info=True)
-        return None
+
+    async def fetch(start: int, end: int):
+        body, *_ = await stream_media(client, sent, start, end)
+        return body
+
+    return await media_service.extract_frame_remote(
+        fetch, size, duration or getattr(sent_media, "duration", None)
+    )
 
 
 async def _store_thumb(client: Client, data: bytes | None) -> int | None:
@@ -335,7 +346,8 @@ async def _save_episode(
     duration: int | None,
     allow_replace: bool = False,
     thumb_msg_id: int | None = None,
-) -> bool:
+) -> tuple[bool, list[int]]:
+    """Enregistre l'épisode. Renvoie (remplacé ?, anciens messages du canal à supprimer)."""
     sent_media = get_media_from_message(sent)
     if sent_media is None:
         raise RuntimeError("Le canal n'a renvoyé aucun média.")
@@ -364,6 +376,9 @@ async def _save_episode(
                     language=language, season_number=ctx["season_number"],
                 )
                 db.add(ep)
+            stale: list[int] = []
+            if replaced and ep.servcey1_msg_id and ep.servcey1_msg_id != sent.id:
+                stale.append(ep.servcey1_msg_id)
             ep.servcey1_file_id = sent_media.file_id
             ep.servcey1_msg_id = sent.id
             ep.servcey1_available = True
@@ -372,16 +387,44 @@ async def _save_episode(
             await db.flush()  # pour avoir ep.id
             base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
             if thumb_msg_id and base:
+                if replaced and ep.thumb_msg_id and ep.thumb_msg_id != thumb_msg_id:
+                    stale.append(ep.thumb_msg_id)
                 ep.thumb_msg_id = thumb_msg_id
                 ep.thumbnail_url = f"{base}/api/episodes/{ep.id}/thumb?v={thumb_msg_id}"
             await db.commit()
-            return replaced
+            return replaced, stale
+
+
+async def _purge_stale(client: Client, stale: list[int]) -> int:
+    """Supprime du canal l'ancien fichier / l'ancienne vignette d'un épisode remplacé.
+
+    Un message encore utilisé par un autre épisode n'est jamais supprimé. Ne lève jamais d'erreur.
+    """
+    if not stale:
+        return 0
+    try:
+        async with async_session() as db:
+            used = set(
+                (await db.execute(select(Episode.servcey1_msg_id).where(Episode.servcey1_msg_id.in_(stale)))).scalars()
+            ) | set(
+                (await db.execute(select(Episode.thumb_msg_id).where(Episode.thumb_msg_id.in_(stale)))).scalars()
+            )
+        todo = [m for m in stale if m not in used]
+        if not todo:
+            return 0
+        from bot.handlers.supprimer import _delete_channel_messages  # import tardif : supprimer importe ce module
+
+        return await _delete_channel_messages(client, todo)
+    except Exception:  # noqa: BLE001
+        logger.warning("ancien fichier du canal non supprimé", exc_info=True)
+        return 0
 
 
 def _duplicate_message(ctx: dict, language: LanguageEnum, num: int) -> str:
     return (
         f"⚠️ Déjà existant : {ctx['anime_title']} — {ctx['season_label']} — {language.value} — épisode {num}.\n"
-        "Je n'ai rien modifié. Pour le remplacer, renvoie le fichier avec le mot REMPLACER dans la légende."
+        "Je n'ai rien modifié. Pour le remplacer, renvoie le fichier avec le mot REMPLACER dans la légende "
+        "(ou active le mode avec /anime ... remplacer)."
     )
 
 
@@ -415,9 +458,10 @@ def register(bot: Client):
     async def cmd_anime(client: Client, message: Message):
         if not message.from_user or not is_admin(message.from_user.id):
             return
-        raw_arg = " ".join(message.command[1:]).strip()
+        # Texte brut du message : Pyrogram retire les guillemets de message.command (nom libre « "Arc X" »)
+        raw_arg = command_args(message.text) or " ".join(message.command[1:]).strip()
         uid = message.from_user.id
-        query, lang, slot = parse_anime_args(raw_arg)
+        query, lang, slot, replace_mode = parse_anime_args_ex(raw_arg)
 
         def _opts_text(l: str | None, sl: str | None) -> str:
             parts = []
@@ -425,7 +469,10 @@ def register(bot: Client):
                 parts.append(f"langue : {l}")
             if sl:
                 parts.append(f"emplacement : {pretty_label(sl)}")
-            return (" · " + " · ".join(parts)) if parts else " · langue et emplacement lus dans la légende"
+            text = (" · " + " · ".join(parts)) if parts else " · langue et emplacement lus dans la légende"
+            if uid in _current_replace:
+                text += "\n⚠️ Mode REMPLACER actif : les épisodes déjà présents seront écrasés (et l'ancien fichier supprimé du canal)."
+            return text
 
         cur = _current_anime.get(uid)
         active = bool(cur and time.time() - cur[1] < CURRENT_TTL)
@@ -437,7 +484,7 @@ def register(bot: Client):
                 l, sl = _current_opts.get(uid, (None, None))
                 return await message.reply(f"Animé actuel : {a.title if a else cur[0]}{_opts_text(l, sl)}")
             return await message.reply(
-                "Aucun animé fixé. Usage : /anime <id ou titre> [VF|VOSTFR] [S01|Saga 2|Film|OAV]"
+                "Aucun animé fixé. Usage : /anime <id ou titre> [VF|VOSTFR] [S01|Saga 2|Arc 3|Film|OAV|Spécial|Récap|Bonus|\"Nom libre\"] [remplacer]"
             )
 
         # « /anime VF S02 » : on garde l'animé déjà fixé et on change seulement les options
@@ -445,7 +492,14 @@ def register(bot: Client):
             if not active:
                 return await message.reply("Aucun animé fixé. Commence par /anime <id ou titre>.")
             _current_anime[uid] = (cur[0], time.time())
+            if replace_mode and not lang and not slot:
+                # « /anime remplacer » seul : on active le mode sans toucher à la langue ni à l'emplacement
+                lang, slot = _current_opts.get(uid, (None, None))
             _current_opts[uid] = (lang, slot)
+            if replace_mode:
+                _current_replace.add(uid)
+            else:
+                _current_replace.discard(uid)
             async with async_session() as db:
                 a = await db.get(Anime, cur[0])
             return await message.reply(f"✅ Options mises à jour : {a.title if a else cur[0]}{_opts_text(lang, slot)}")
@@ -463,6 +517,10 @@ def register(bot: Client):
         _current_anime[uid] = (row.id, time.time())
         _current_movie.discard(uid)
         _movie_pinned.discard(uid)
+        if replace_mode:
+            _current_replace.add(uid)
+        else:
+            _current_replace.discard(uid)
         movie = False
         if message.command[0].lower() == "movie":
             _movie_pinned.add(uid)
@@ -486,7 +544,7 @@ def register(bot: Client):
         fname = getattr(media, "file_name", None) or ""
 
         raw_caption = message.caption or ""
-        replace_ok = bool(_REPLACE_RE.search(raw_caption))
+        replace_ok = bool(_REPLACE_RE.search(raw_caption))  # mot REMPLACER dans la légende de ce fichier
         p = parse_caption(_REPLACE_RE.sub(" ", raw_caption))
         if p.episode is None or p.lang is None or p.title is None or p.slot_defaulted:
             p = merge_missing(p, parse_caption(os.path.splitext(fname)[0], is_filename=True))
@@ -495,6 +553,8 @@ def register(bot: Client):
         uid = message.from_user.id
         cur = _current_anime.get(uid)
         if cur and time.time() - cur[1] < CURRENT_TTL:
+            if uid in _current_replace:  # « /anime ... remplacer » : tous les fichiers suivants remplacent
+                replace_ok = True
             forced_lang, forced_slot = _current_opts.get(uid, (None, None))
             if forced_lang:
                 p = replace(p, lang=forced_lang, multi=False)
@@ -547,7 +607,8 @@ def register(bot: Client):
             if direct:
                 # Déjà au bon format : copie directe dans le canal (sans retélécharger).
                 sent = await _channel_send(lambda: message.copy(chat_id=settings.TELEGRAM_CHANNEL_ID, caption=caption))
-                thumb_bytes = await _telegram_thumb(client, media)
+                await ui.set("🖼️ Création de la vignette…", force=True)
+                thumb_bytes = await _remote_thumb(client, sent, duration)
             else:
                 free = shutil.disk_usage(TMP_DIR).free
                 if size * 2.2 > free:
@@ -578,10 +639,11 @@ def register(bot: Client):
                         )
 
             thumb_msg_id = await _store_thumb(client, thumb_bytes)
-            replaced = await _save_episode(
+            replaced, stale = await _save_episode(
                 ctx, language, p.episode, sent, duration, allow_replace=replace_ok, thumb_msg_id=thumb_msg_id
             )
             saved = True
+            purged = await _purge_stale(client, stale)  # remplacement : l'ancien fichier ne reste pas dans le canal
 
             notes = []
             if p.multi:
@@ -592,6 +654,10 @@ def register(bot: Client):
                 notes.append("pistes de sous-titres séparées ignorées")
             if reencoded:
                 notes.append("vidéo réencodée en H.264")
+            if purged:
+                notes.append("ancien fichier supprimé du canal")
+            if thumb_msg_id is None:
+                notes.append("vignette non créée")
             if unverified:
                 notes.append("⚠️ format non vérifié (fichier trop gros pour l'analyser) : si le lecteur affiche une erreur, réencode-le")
             await status.edit_text(

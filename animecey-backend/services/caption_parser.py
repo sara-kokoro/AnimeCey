@@ -8,8 +8,20 @@ Exemples compris :
   @AnimesZonePremium Kage no Jitsuryokusha ni Naritakute! Saison 02 10 VOSTFR
   Demon Slayer / Film - La Forteresse Infinie — Épisode 1 · VF
   One Piece / Saga 1 (East Blue) — Épisode 6 [VF]
+  Naruto / Arc 3 (Pays des Vagues) — Épisode 5 [VF]
 
-Chaque légende est ramenée à : titre, emplacement (saison2, saga1, film1, oav...), langue, épisode.
+Chaque légende est ramenée à : titre, emplacement (saison2, saga1, arc3, film1, oav...), langue, épisode.
+
+Emplacements reconnus (légende, nom de fichier et commande /anime) :
+  saison / season / S + n°   (+ « partie / cour / p » + n°)      -> saison2, saison2partie1
+  saga + n°                   (+ nom entre parenthèses, ignoré)   -> saga1
+  arc + n°                    (+ nom entre parenthèses, ignoré)   -> arc3
+  film / movie (+ n°)                                             -> film1, film3
+  oav / ova / oad / ona                                           -> oav
+  spécial / special / hors-série                                  -> special
+  récap / résumé                                                  -> recap
+  bonus / extra                                                   -> bonus
+  « nom libre entre guillemets » (commande seulement)             -> x-nom-libre (type « autre »)
 """
 
 from __future__ import annotations
@@ -21,7 +33,9 @@ from dataclasses import dataclass, replace
 # Un fichier « Multi » contient plusieurs pistes audio : on le range dans cette langue.
 MULTI_AS = "VOSTFR"
 
-_KINDS = ("saison", "saga", "film", "oav", "special")
+_KINDS = ("saison", "saga", "arc", "film", "oav", "special", "recap", "bonus")
+# Un emplacement libre (nommé par l'admin entre guillemets) commence par ce préfixe : type « autre ».
+FREE_PREFIX = "x-"
 
 _NOISE = re.compile(
     r"\b(version\s+convertie|convertie|2160p?|1080p?|720p?|480p?|4k|web[- ]?dl|web[- ]?rip|blu[- ]?ray|"
@@ -37,9 +51,12 @@ _PART = re.compile(r"\s*[-–—·,]?\s*(?:partie|part|pt|cour|p)\s*(\d)(?![\w])
 _PART_AFTER = re.compile(r"(?<![\w])(?:partie|part|pt|cour)\s*(\d)(?![\w])", re.I)
 _PART_AFTER_P = re.compile(r"(?<![\w])p\s*(\d)(?![\w])", re.I)
 _SAGA = re.compile(r"(?<![\w])saga\s*(\d{1,2})(?![\w])(?:\s*\([^)]*\))?", re.I)
-_FILM = re.compile(r"(?<![\w])films?(?![\w])(?:\s*(\d{1,2})(?![\w]))?", re.I)
-_OAV = re.compile(r"(?<![\w])(?:oav|ova|oad)(?![\w])", re.I)
-_SPECIAL = re.compile(r"(?<![\w])(?:specials?|spéciaux|spécial|speciaux)(?![\w])", re.I)
+_ARC = re.compile(r"(?<![\w])arc\s*(\d{1,2})(?![\w])(?:\s*\([^)]*\))?", re.I)
+_FILM = re.compile(r"(?<![\w])(?:films?|movies?)(?![\w])(?:\s*(\d{1,2})(?![\w]))?", re.I)
+_OAV = re.compile(r"(?<![\w])(?:oav|ova|oad|ona)(?![\w])", re.I)
+_SPECIAL = re.compile(r"(?<![\w])(?:specials?|spéciaux|spécial|speciaux|hors[\s-]*s[ée]rie)(?![\w])", re.I)
+_RECAP = re.compile(r"(?<![\w])(?:r[ée]caps?|r[ée]capitulatif|r[ée]sum[ée])(?![\w])", re.I)
+_BONUS = re.compile(r"(?<![\w])(?:bonus|extras?)(?![\w])", re.I)
 _EP_WORD = re.compile(r"(?<![\w])(?:épisode|episode|ép|ep)\.?\s*(\d{1,4})(?![\w])", re.I)
 _EP_E = re.compile(r"(?<![A-Za-z])E(\d{1,4})(?![\w])", re.I)
 _NUMBER = re.compile(r"(?<![\w.])(\d{1,4})(?![\w])")
@@ -51,6 +68,8 @@ def season_key(name: str) -> str:
 
 
 def kind_of(key: str) -> str:
+    if key.startswith(FREE_PREFIX):
+        return "autre"
     for kind in _KINDS:
         if key.startswith(kind):
             return kind
@@ -58,10 +77,12 @@ def kind_of(key: str) -> str:
 
 
 def pretty_label(key: str) -> str:
-    """'saison2partie1' -> 'Saison 2 Partie 1' ; 'oav' -> 'OAV'."""
+    """'saison2partie1' -> 'Saison 2 Partie 1' ; 'oav' -> 'OAV' ; 'x-pays-des-vagues' -> 'Pays Des Vagues'."""
+    if key.startswith(FREE_PREFIX):
+        return " ".join(w.capitalize() for w in key[len(FREE_PREFIX):].split("-") if w) or key
     out = []
     for p in re.findall(r"[a-z]+|\d+", key.lower()):
-        out.append("OAV" if p == "oav" else p.capitalize() if p.isalpha() else p)
+        out.append("OAV" if p == "oav" else "Récap" if p == "recap" else p.capitalize() if p.isalpha() else p)
     return " ".join(out) or key
 
 
@@ -154,6 +175,16 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
         m = _SAGA.search(work)
         if m:
             slot = f"saga{int(m.group(1))}"; starts.append(m.start()); work = _blank(work, m)
+            pm = _PART.match(work, m.end())
+            if pm:
+                slot += f"partie{int(pm.group(1))}"; work = _blank(work, pm)
+    if slot is None:
+        m = _ARC.search(work)
+        if m:
+            slot = f"arc{int(m.group(1))}"; starts.append(m.start()); work = _blank(work, m)
+            pm = _PART.match(work, m.end())
+            if pm:
+                slot += f"partie{int(pm.group(1))}"; work = _blank(work, pm)
     if slot is None:
         m = _FILM.search(work)
         if m:
@@ -166,6 +197,14 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
         m = _SPECIAL.search(work)
         if m:
             slot = "special"; starts.append(m.start()); work = _blank(work, m)
+    if slot is None:
+        m = _RECAP.search(work)
+        if m:
+            slot = "recap"; starts.append(m.start()); work = _blank(work, m)
+    if slot is None:
+        m = _BONUS.search(work)
+        if m:
+            slot = "bonus"; starts.append(m.start()); work = _blank(work, m)
 
     if episode is None:
         m = _EP_WORD.search(work) or _EP_E.search(work)
@@ -173,7 +212,7 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
             episode = int(m.group(1)); starts.append(m.start()); work = _blank(work, m)
     # Partie notée APRÈS l'épisode : « S02 Ep01 part 2 », « S02E01 Partie 2 ».
     # (« p 2 » seul n'est accepté que si l'épisode a été écrit explicitement : Ep / E.)
-    if slot and slot.startswith("saison") and "partie" not in slot:
+    if slot and slot.startswith(("saison", "saga", "arc")) and "partie" not in slot:
         pm = _PART_AFTER.search(work) or (_PART_AFTER_P.search(work) if episode is not None else None)
         if pm:
             slot += f"partie{int(pm.group(1))}"; work = _blank(work, pm)
@@ -205,56 +244,106 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
     return Parsed(title=title, slot_key=key, slot_defaulted=defaulted, episode=episode, lang=lang, multi=multi)
 
 
-# ── Options de la commande /anime : « /anime 16 VF S01 », « /anime Black Clover saga 2 » ──
+# ── Options de la commande /anime : « /anime 16 VF S01 », « /anime Naruto arc 3 remplacer » ──
+
+_ARG_PAREN = r"(?:\s*\([^)]*\))?"                                  # « (East Blue) » : ignoré
+_ARG_PART = r"(?:\s*[-–—·,]?\s*(?:partie|part|pt|cour|p)\s*(\d))?"   # « partie 2 » facultative
 
 _ARG_LANG = re.compile(r"(?:^|\s)(vostfr|vost|vff|vfq|vf)$", re.I)
-_ARG_SEASON = re.compile(
-    r"(?:^|\s)(?:saison|season|s)\s*(\d{1,2})(?:\s*[-–—·,]?\s*(?:partie|part|pt|cour|p)\s*(\d))?$", re.I
+_ARG_REPLACE = re.compile(r"(?:^|\s)(?:remplacer|remplace|replace|[ée]craser)$", re.I)
+_ARG_SEASON = re.compile(r"(?:^|\s)(?:saison|season|s)\s*(\d{1,2})" + _ARG_PART + r"$", re.I)
+_ARG_SAGA = re.compile(r"(?:^|\s)saga\s*(\d{1,2})" + _ARG_PAREN + _ARG_PART + r"$", re.I)
+_ARG_ARC = re.compile(r"(?:^|\s)arc\s*(\d{1,2})" + _ARG_PAREN + _ARG_PART + r"$", re.I)
+_ARG_FILM = re.compile(r"(?:^|\s)(?:films?|movies?)(?:\s*(\d{1,2}))?$", re.I)
+_ARG_OAV = re.compile(r"(?:^|\s)(?:oav|ova|oad|ona)$", re.I)
+_ARG_SPECIAL = re.compile(r"(?:^|\s)(?:specials?|spéciaux|spécial|speciaux|hors[\s-]*s[ée]rie)$", re.I)
+_ARG_RECAP = re.compile(r"(?:^|\s)(?:r[ée]caps?|r[ée]capitulatif|r[ée]sum[ée])$", re.I)
+_ARG_BONUS = re.compile(r"(?:^|\s)(?:bonus|extras?)$", re.I)
+_ARG_FREE = re.compile(r"(?:^|\s)[\"“«]\s*([^\"”»]{2,40}?)\s*[\"”»]$")   # « "Pays des Vagues" »
+
+
+def command_args(text: str | None) -> str:
+    """Texte brut après la commande : '/anime@bot 16 "Arc X"' -> '16 "Arc X"'.
+
+    Pyrogram retire les guillemets de message.command ; il faut donc partir du texte du message.
+    """
+    t = (text or "").strip()
+    if t[:1] in "/!.":
+        parts = t.split(None, 1)
+        return parts[1].strip() if len(parts) > 1 else ""
+    return t
+
+
+def free_slot_key(name: str) -> str | None:
+    """'Pays des Vagues' -> 'x-pays-des-vagues' (None si rien d'utilisable)."""
+    words = re.findall(r"[^\W_]+", unicodedata.normalize("NFC", name or "").lower())
+    slug = "-".join(words)[:40].strip("-")
+    return FREE_PREFIX + slug if slug else None
+
+
+def _slot_from_match(kind: str, m: re.Match) -> str:
+    if kind in ("saison", "saga", "arc"):
+        return f"{kind}{int(m.group(1))}" + (f"partie{int(m.group(2))}" if m.lastindex and m.lastindex >= 2 and m.group(2) else "")
+    if kind == "film":
+        return f"film{int(m.group(1) or 1)}"
+    return kind  # oav, special, recap, bonus
+
+
+_ARG_SLOTS = (
+    ("saison", _ARG_SEASON), ("saga", _ARG_SAGA), ("arc", _ARG_ARC), ("film", _ARG_FILM),
+    ("oav", _ARG_OAV), ("special", _ARG_SPECIAL), ("recap", _ARG_RECAP), ("bonus", _ARG_BONUS),
 )
-_ARG_SAGA = re.compile(r"(?:^|\s)saga\s*(\d{1,2})$", re.I)
-_ARG_FILM = re.compile(r"(?:^|\s)films?(?:\s*(\d{1,2}))?$", re.I)
-_ARG_OAV = re.compile(r"(?:^|\s)(?:oav|ova|oad)$", re.I)
-_ARG_SPECIAL = re.compile(r"(?:^|\s)(?:specials?|spéciaux|spécial|speciaux)$", re.I)
 
 
-def parse_anime_args(arg: str) -> tuple[str, str | None, str | None]:
-    """'16 VF S01' -> ('16', 'VF', 'saison1') ; 'Black Clover saga 2' -> ('Black Clover', None, 'saga2').
+def parse_anime_args_ex(arg: str) -> tuple[str, str | None, str | None, bool]:
+    """'16 VF S01 remplacer' -> ('16', 'VF', 'saison1', True).
 
-    Les options (langue, emplacement) se lisent en fin de commande, dans n'importe quel ordre.
-    Renvoie (animé : id ou titre, langue | None, clé d'emplacement | None).
+    Les options (langue, emplacement, mot « remplacer ») se lisent en fin de commande, dans
+    n'importe quel ordre. Renvoie (animé : id ou titre, langue | None, clé d'emplacement | None,
+    mode remplacer).
     """
     query = (arg or "").strip()
     lang: str | None = None
     slot: str | None = None
-    for _ in range(3):
+    replace_mode = False
+    for _ in range(6):
         if lang is None:
             m = _ARG_LANG.search(query)
             if m:
                 lang = "VOSTFR" if m.group(1).lower() in ("vostfr", "vost") else "VF"
                 query = query[: m.start()].strip()
                 continue
-        if slot is None:
-            m = _ARG_SEASON.search(query)
+        if not replace_mode:
+            m = _ARG_REPLACE.search(query)
             if m:
-                slot = f"saison{int(m.group(1))}" + (f"partie{int(m.group(2))}" if m.group(2) else "")
-            else:
-                m = _ARG_SAGA.search(query)
-                if m:
-                    slot = f"saga{int(m.group(1))}"
-                else:
-                    m = _ARG_FILM.search(query)
-                    if m:
-                        slot = f"film{int(m.group(1) or 1)}"
-                    else:
-                        m = _ARG_OAV.search(query)
-                        if m:
-                            slot = "oav"
-                        else:
-                            m = _ARG_SPECIAL.search(query)
-                            if m:
-                                slot = "special"
-            if m:
+                replace_mode = True
                 query = query[: m.start()].strip()
                 continue
+        if slot is None:
+            found = None
+            for kind, rx in _ARG_SLOTS:
+                m = rx.search(query)
+                if m:
+                    found = (kind, m)
+                    break
+            if found is None:
+                m = _ARG_FREE.search(query)
+                if m and (key := free_slot_key(m.group(1))):
+                    slot = key
+                    query = query[: m.start()].strip()
+                    continue
+            else:
+                slot = _slot_from_match(*found)
+                query = query[: found[1].start()].strip()
+                continue
         break
+    return query, lang, slot, replace_mode
+
+
+def parse_anime_args(arg: str) -> tuple[str, str | None, str | None]:
+    """'16 VF S01' -> ('16', 'VF', 'saison1') ; 'Black Clover saga 2' -> ('Black Clover', None, 'saga2').
+
+    Version sans le mot « remplacer » (utilisée par /delsaison). Voir parse_anime_args_ex.
+    """
+    query, lang, slot, _ = parse_anime_args_ex(arg)
     return query, lang, slot

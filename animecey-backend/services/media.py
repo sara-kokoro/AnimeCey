@@ -16,7 +16,7 @@ import json
 import logging
 import os
 import shutil
-from typing import Awaitable, Callable
+from typing import AsyncIterator, Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -192,27 +192,194 @@ async def remux_to_mp4(src: str, dst: str, on_progress: ProgressCb | None = None
     }
 
 
-async def extract_frame(path: str, duration: int | None) -> bytes | None:
-    """Une image JPEG (640 px de large) prise à ~20 % de la vidéo. None si impossible."""
-    if duration and duration > 120:
-        t = max(30, int(duration * 0.2))
-    elif duration:
-        t = int(duration * 0.3)
-    else:
-        t = 5
-    out = path + ".thumb.jpg"
+# ── Vignette de l'épisode ───────────────────────────────────────────────
+# L'image est toujours prise dans la vidéo elle-même, à 15 % de sa durée : la miniature que Telegram
+# attache à un fichier (parfois personnalisée par celui qui l'a partagé) n'est jamais utilisée.
+
+THUMB_POINTS = (0.15, 0.25, 0.40)  # 15 % d'abord ; les suivants servent seulement si l'image est quasi noire
+THUMB_MIN_BYTES = 8_000            # un JPEG 640 px plus léger que ça est presque uniforme (noir, fondu...)
+
+
+async def _run_quick(*cmd: str, timeout: int) -> tuple[int, bytes]:
+    """Lance une commande courte en priorité basse ; elle est tuée en cas de délai dépassé ou d'annulation."""
+    nice = shutil.which("nice")
+    full = ([nice, "-n", "19"] if nice else []) + list(cmd)
+    proc = await asyncio.create_subprocess_exec(
+        *full, stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
     try:
-        code, _, _ = await _run(
-            "ffmpeg", "-y", "-ss", str(t), "-i", path, "-frames:v", "1",
-            "-vf", "scale=640:-2", "-q:v", "4", out,
-            timeout=120,
-        )
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        return proc.returncode, out
+    except asyncio.TimeoutError:
+        raise MediaError("ffmpeg a dépassé le temps maximum")
+    finally:
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
+
+
+async def _grab_frame(src: str, seconds: int, *, remote: bool) -> bytes | None:
+    """Une image JPEG (640 px de large) à `seconds` ; `src` = fichier local ou adresse http."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="thumb_") as tmp:
+        out = os.path.join(tmp, "thumb.jpg")
+        cmd = ["ffmpeg", "-y", "-nostdin", "-loglevel", "error"]
+        if remote:
+            cmd += ["-rw_timeout", "30000000"]  # 30 s sans réponse -> abandon
+        cmd += ["-ss", str(seconds), "-i", src, "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "4", out]
+        code, _ = await _run_quick(*cmd, timeout=120)
         if code != 0 or not os.path.exists(out):
             return None
         with open(out, "rb") as fh:
             return fh.read() or None
-    except MediaError:
+
+
+async def _remote_duration(url: str) -> float | None:
+    try:
+        code, out = await _run_quick(
+            "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", url,
+            timeout=90,
+        )
+        return float(out.decode().strip()) if code == 0 and out.strip() else None
+    except (MediaError, ValueError):
         return None
-    finally:
-        if os.path.exists(out):
-            os.remove(out)
+
+
+async def extract_frame(src: str, duration: int | None, *, remote: bool = False) -> bytes | None:
+    """Image JPEG prise à 15 % de la vidéo (fichier local, ou adresse http si remote=True). None si impossible.
+
+    Si l'image est presque noire (fondu, écran de titre), on réessaie à 25 % puis 40 %.
+    """
+    base = float(duration) if duration and duration > 0 else None
+    if base is None and remote:
+        base = await _remote_duration(src)
+    times = [max(1, int(base * f)) for f in THUMB_POINTS] if base else [30, 60, 120]
+    best: bytes | None = None
+    for t in dict.fromkeys(times):
+        try:
+            data = await _grab_frame(src, t, remote=remote)
+        except MediaError:
+            continue
+        if not data:
+            continue
+        if len(data) >= THUMB_MIN_BYTES:
+            return data
+        if best is None or len(data) > len(best):
+            best = data
+    return best
+
+
+# Lecture à distance : ffmpeg lit la vidéo rangée dans le canal Telegram par morceaux (requêtes « Range »),
+# donc seuls les quelques Mo autour de l'image voulue sont téléchargés, jamais l'épisode entier.
+
+RangeFetch = Callable[[int, int], Awaitable["AsyncIterator[bytes]"]]  # (début, fin incluse) -> flux d'octets
+
+
+class _RangeServer:
+    """Mini-serveur HTTP local (127.0.0.1, port libre) qui sert un fichier distant à ffmpeg."""
+
+    def __init__(self, size: int, fetch: RangeFetch) -> None:
+        self.size = size
+        self._fetch = fetch
+        self._server: asyncio.AbstractServer | None = None
+        self._writers: set[asyncio.StreamWriter] = set()
+        self.url = ""
+        self.bytes_served = 0
+
+    async def __aenter__(self) -> "_RangeServer":
+        self._server = await asyncio.start_server(self._handle, "127.0.0.1", 0)
+        self.url = f"http://127.0.0.1:{self._server.sockets[0].getsockname()[1]}/video.mp4"
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        if self._server is not None:
+            self._server.close()
+        for w in list(self._writers):
+            w.close()
+        if self._server is not None:
+            try:
+                await asyncio.wait_for(self._server.wait_closed(), 2)
+            except (asyncio.TimeoutError, Exception):  # noqa: BLE001
+                pass
+
+    async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        self._writers.add(writer)
+        gen = None
+        try:
+            try:
+                head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 15)
+            except (asyncio.TimeoutError, asyncio.IncompleteReadError, asyncio.LimitOverrunError):
+                return
+            lines = head.decode("latin-1").split("\r\n")
+            method = lines[0].split(" ")[0].upper()
+            hdr = {}
+            for ln in lines[1:]:
+                k, _, v = ln.partition(":")
+                if v:
+                    hdr[k.strip().lower()] = v.strip()
+            start, end, partial = 0, self.size - 1, False
+            rng = hdr.get("range", "")
+            if rng.lower().startswith("bytes="):
+                a, _, b = rng[6:].split(",")[0].partition("-")
+                try:
+                    if a == "":
+                        start = max(self.size - int(b), 0)
+                    else:
+                        start = int(a)
+                        end = min(int(b), self.size - 1) if b else self.size - 1
+                except ValueError:
+                    start, end = self.size, 0
+                partial = True
+            if start >= self.size or end < start:
+                writer.write(
+                    f"HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */{self.size}\r\n"
+                    "Content-Length: 0\r\nConnection: close\r\n\r\n".encode()
+                )
+                await writer.drain()
+                return
+            resp = [
+                "HTTP/1.1 206 Partial Content" if partial else "HTTP/1.1 200 OK",
+                "Content-Type: video/mp4", "Accept-Ranges: bytes",
+                f"Content-Length: {end - start + 1}", "Connection: close",
+            ]
+            if partial:
+                resp.append(f"Content-Range: bytes {start}-{end}/{self.size}")
+            writer.write(("\r\n".join(resp) + "\r\n\r\n").encode())
+            await writer.drain()
+            if method == "HEAD":
+                return
+            gen = await self._fetch(start, end)
+            async for chunk in gen:
+                writer.write(chunk)
+                self.bytes_served += len(chunk)
+                await writer.drain()
+        except (ConnectionError, asyncio.CancelledError):
+            pass  # ffmpeg a fermé la connexion (il a eu ce qu'il voulait) ou l'envoi est annulé
+        except Exception:  # noqa: BLE001
+            logger.debug("lecture à distance interrompue", exc_info=True)
+        finally:
+            aclose = getattr(gen, "aclose", None)
+            if aclose is not None:
+                try:
+                    await aclose()
+                except Exception:  # noqa: BLE001
+                    pass
+            self._writers.discard(writer)
+            writer.close()
+
+
+async def extract_frame_remote(fetch: RangeFetch, size: int, duration: int | None) -> bytes | None:
+    """Image à 15 % d'une vidéo qui n'est pas sur le disque (fichier du canal Telegram). Ne lève jamais d'erreur."""
+    if not size or size <= 0:
+        return None
+    try:
+        async with _RangeServer(size, fetch) as srv:
+            data = await extract_frame(srv.url, duration, remote=True)
+            logger.info("vignette distante : %.1f Mo lus sur %.0f Mo", srv.bytes_served / 1e6, size / 1e6)
+            return data
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 — une vignette ratée ne doit jamais faire échouer l'envoi
+        logger.warning("vignette distante impossible", exc_info=True)
+        return None
