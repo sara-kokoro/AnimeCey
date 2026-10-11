@@ -10,6 +10,7 @@ import { ServCeyPlayer } from "@/components/player/ServCeyPlayer";
 import { DownloadButton } from "@/components/player/DownloadButton";
 import { MultiTagAd } from "@/components/ads/MultiTagAd";
 import { MonetagAd } from "@/components/ads/MonetagAd";
+import { VastGate } from "@/components/ads/VastGate";
 import { BannerAd } from "@/components/ads/BannerAd";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
@@ -192,6 +193,7 @@ export default function Watch() {
                 <Loader2 className="w-10 h-10 text-primary animate-spin" />
               </div>
             )}
+            <VastGate key={episode.id}>
             {playerUrl && isDirectVideo ? (
               <ServCeyPlayer
                 key={`${episode.id}-${selectedKey}-${lang}`}
@@ -221,6 +223,7 @@ export default function Watch() {
                 {noSource ? "Source non disponible pour ce serveur." : ""}
               </div>
             )}
+            </VastGate>
           </div>
 
           <div className="px-4 md:px-0 mt-4 flex flex-col md:flex-row gap-4 md:items-end md:justify-between min-w-0">
