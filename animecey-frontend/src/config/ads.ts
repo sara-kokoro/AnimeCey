@@ -25,7 +25,7 @@ l.parentNode.insertBefore(s, l);
 })({})
 </script>`,
   /** Lien direct (DirectLink) ouvert avant un téléchargement, par exemple « https://... ». */
-  directLink: (env.VITE_HILLTOP_DIRECTLINK as string | undefined) ?? "",
+  directLink: (env.VITE_HILLTOP_DIRECTLINK as string | undefined) ?? "https://uplcm.com/4/11978082",
 };
 
 /**
