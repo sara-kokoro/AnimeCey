@@ -15,3 +15,13 @@ export const HILLTOP = {
   /** Lien direct (DirectLink) ouvert avant un téléchargement, par exemple « https://... ». */
   directLink: (env.VITE_HILLTOP_DIRECTLINK as string | undefined) ?? "",
 };
+
+/**
+ * Monetag (In-Page Push).
+ * Zone fournie par Monetag. Une chaîne vide désactive le format.
+ * Peut aussi venir de la variable d'environnement VITE_MONETAG_ZONE.
+ */
+export const MONETAG = {
+  zone: (env.VITE_MONETAG_ZONE as string | undefined) ?? "12006031",
+  src: "https://nap5k.com/tag.min.js",
+};
