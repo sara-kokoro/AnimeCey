@@ -10,6 +10,7 @@ import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { LiveHome } from "@/components/home/LiveHome";
 import { BannerAd } from "@/components/ads/BannerAd";
 import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
+import { SocialBarAd } from "@/components/ads/SocialBarAd";
 import { fetchAnimes, fetchLiveHome, fetchTopWeek, fetchTopRated, fetchLatest, fetchTrending } from "@/api/animes";
 import { motion } from "framer-motion";
 
@@ -54,6 +55,7 @@ export default function Home() {
       <HeroCarousel />
 
       <main className="mx-auto max-w-7xl px-4 md:px-6">
+        <SocialBarAd />
         {hasLive && (
           <div className="mt-6 flex gap-2">
             <button

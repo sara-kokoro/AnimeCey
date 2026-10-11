@@ -66,4 +66,8 @@ export const ADSTERRA = {
     width: 320,
     height: 50,
   },
+  /** Social Bar : doit tourner dans la page elle-même (comme Monetag). Vide = désactivé. */
+  socialBar: {
+    src: "https://asperitymeg.com/65/0e/b5/650eb564bed8abd40af0d7ca7ac5f337.js",
+  },
 };
