@@ -5,6 +5,7 @@ import { LiveHero } from "@/components/home/LiveHero";
 import { RankedRow } from "@/components/home/RankedRow";
 import { HorizontalScroll } from "@/components/ui/HorizontalScroll";
 import { AnimeCard } from "@/components/anime/AnimeCard";
+import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import type { LiveHomeData } from "@/api/animes";
 import type { Anime } from "@/types";
 
@@ -58,6 +59,7 @@ export function LiveHome({ data }: { data: LiveHomeData }) {
       <Row title="Les mieux notés" items={data.top_rated} href={all} />
       <Row title="Films à voir" items={data.films} href="/films?category=live" />
       <Row title="Séries à regarder" items={data.series} href="/series?category=live" />
+      <AdsterraBanner format="native" className="my-8" />
       {data.genres.map((g) => (
         <Row key={g.genre} title={g.genre} items={g.items} href={`/genre/${encodeURIComponent(g.genre)}?category=live`} />
       ))}

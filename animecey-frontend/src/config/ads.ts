@@ -29,16 +29,6 @@ l.parentNode.insertBefore(s, l);
 };
 
 /**
- * Monetag (In-Page Push).
- * Zone fournie par Monetag. Une chaîne vide désactive le format.
- * Peut aussi venir de la variable d'environnement VITE_MONETAG_ZONE.
- */
-export const MONETAG = {
-  zone: (env.VITE_MONETAG_ZONE as string | undefined) ?? "12006031",
-  src: "https://nap5k.com/tag.min.js",
-};
-
-/**
  * Pub vidéo HilltopAds (VAST), jouée avant la lecture d'un épisode.
  * Colle ici le lien de ta zone VAST. Une chaîne vide désactive la pub vidéo.
  * Peut aussi venir de la variable d'environnement VITE_HILLTOP_VAST.

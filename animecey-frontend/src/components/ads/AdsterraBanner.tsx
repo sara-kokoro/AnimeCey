@@ -4,12 +4,16 @@ import { cn } from "@/lib/utils";
 
 type Format = "native" | "banner";
 
+// Hauteur donnée au cadre natif tant qu'il n'a rien affiché : certains scripts publicitaires
+// ne s'affichent pas dans un cadre de hauteur nulle.
+const NATIVE_PROBE_HEIGHT = 250;
+
 /**
  * Bannière Adsterra.
  * - format="native" : bannière native, qui prend la largeur disponible (jusqu'à 576 px).
  *   La hauteur s'adapte au contenu ; sans pub, rien n'est affiché et aucun espace n'est réservé.
  * - format="banner" : bannière 320×50.
- * Chargée seulement quand elle approche de l'écran, dans un cadre isolé (sandbox) :
+ * Chargée seulement quand elle approche de l'écran, dans un cadre isolé (sandbox) qui affiche une page de public/ads :
  * le script publicitaire ne peut pas lire le jeton de connexion des visiteurs.
  */
 export function AdsterraBanner({ format, className }: { format: Format; className?: string }) {
@@ -17,6 +21,7 @@ export function AdsterraBanner({ format, className }: { format: Format; classNam
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [visible, setVisible] = useState(false);
   const [nativeHeight, setNativeHeight] = useState(0);
+  const [filled, setFilled] = useState(false);
 
   const isNative = format === "native";
   const src = isNative ? ADSTERRA.native.src : ADSTERRA.banner.src;
@@ -42,7 +47,10 @@ export function AdsterraBanner({ format, className }: { format: Format; classNam
     const onMessage = (e: MessageEvent) => {
       if (e.source !== frameRef.current?.contentWindow) return;
       const h = Number((e.data as { __adh?: number } | null)?.__adh);
-      if (h > 0 && h < 1500) setNativeHeight(Math.ceil(h));
+      if (h > 0 && h < 1500) {
+        setNativeHeight(Math.ceil(h));
+        setFilled(true);
+      }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -50,29 +58,18 @@ export function AdsterraBanner({ format, className }: { format: Format; classNam
 
   if (!src) return null;
 
-  const base =
-    `<!doctype html><html><head><meta charset="utf-8"><base target="_blank">` +
-    `<style>html,body{margin:0;padding:0;background:transparent}body{display:flex;justify-content:center}</style>` +
-    `</head><body>`;
+  // Pages hébergées sur ton site (dossier public/ads) : le script voit ainsi le vrai nom de domaine,
+  // tout en restant isolé dans un cadre sécurisé (sandbox).
+  const page = isNative ? "/ads/adsterra-native.html" : "/ads/adsterra-banner-320x50.html";
 
-  const nativeSizer =
-    `<script>(function(){function p(){try{parent.postMessage({__adh:document.body.offsetHeight},"*")}catch(e){}}` +
-    `if(window.ResizeObserver){new ResizeObserver(p).observe(document.body)}` +
-    `window.addEventListener("load",p);setTimeout(p,1500);setTimeout(p,4000);})();</script>`;
-
-  const srcDoc = isNative
-    ? `${base}<div style="width:100%">` +
-      `<script async="async" data-cfasync="false" src="${ADSTERRA.native.src}"></script>` +
-      `<div id="${ADSTERRA.native.containerId}"></div></div>${nativeSizer}</body></html>`
-    : `${base}<script>atOptions={'key':'${ADSTERRA.banner.key}','format':'iframe','height':${ADSTERRA.banner.height},'width':${ADSTERRA.banner.width},'params':{}};</script>` +
-      `<script src="${ADSTERRA.banner.src}"></script></body></html>`;
-
-  const showLabel = isNative ? nativeHeight > 0 : true;
+  // Bannière native : tant qu'aucune pub n'est arrivée, le cadre est invisible, sans espace réservé
+  // ni clic intercepté, mais il garde une vraie taille pour que le script se charge.
+  const showLabel = isNative ? filled : true;
 
   return (
     <div
       ref={wrapRef}
-      className={cn("mx-auto max-w-full", isNative ? "w-full max-w-xl px-4 md:px-0" : "", className)}
+      className={cn("mx-auto max-w-full", isNative ? "relative w-full max-w-xl px-4 md:px-0" : "", className)}
       style={isNative ? { minHeight: 1 } : { width: ADSTERRA.banner.width }}
     >
       {showLabel && (
@@ -85,13 +82,15 @@ export function AdsterraBanner({ format, className }: { format: Format; classNam
           <iframe
             ref={frameRef}
             title="Publicité"
-            srcDoc={srcDoc}
+            src={page}
             scrolling="no"
             sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation"
             className="block w-full border-0"
             style={
               isNative
-                ? { height: nativeHeight }
+                ? filled
+                  ? { height: nativeHeight }
+                  : { position: "absolute", top: 0, left: 0, height: NATIVE_PROBE_HEIGHT, pointerEvents: "none" }
                 : { width: ADSTERRA.banner.width, height: ADSTERRA.banner.height }
             }
           />

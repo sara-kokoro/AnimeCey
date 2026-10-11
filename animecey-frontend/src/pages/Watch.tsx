@@ -9,7 +9,6 @@ import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { ServCeyPlayer } from "@/components/player/ServCeyPlayer";
 import { DownloadButton } from "@/components/player/DownloadButton";
 import { MultiTagAd } from "@/components/ads/MultiTagAd";
-import { MonetagAd } from "@/components/ads/MonetagAd";
 import { VastGate } from "@/components/ads/VastGate";
 import { BannerAd } from "@/components/ads/BannerAd";
 import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
@@ -184,7 +183,6 @@ export default function Watch() {
     >
       <Navbar />
       <MultiTagAd />
-      <MonetagAd />
 
       <div className="pt-16 mx-auto max-w-[1500px] px-0 md:px-6 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
         <div className="min-w-0">
