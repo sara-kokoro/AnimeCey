@@ -50,3 +50,20 @@ export const VAST = {
   /** Délai minimum entre deux pubs vidéo pour un même visiteur (en minutes). */
   minIntervalMin: 5,
 };
+
+/**
+ * Adsterra : bannière native (largeur adaptable) et bannière 320×50.
+ * Pour désactiver un format, mets sa valeur « src » à une chaîne vide.
+ */
+export const ADSTERRA = {
+  native: {
+    src: "https://asperitymeg.com/0860f51b75536f1919cf4b33ca6be827/invoke.js",
+    containerId: "container-0860f51b75536f1919cf4b33ca6be827",
+  },
+  banner: {
+    key: "263e39d26222551b3b48784264465d9b",
+    src: "https://asperitymeg.com/263e39d26222551b3b48784264465d9b/invoke.js",
+    width: 320,
+    height: 50,
+  },
+};

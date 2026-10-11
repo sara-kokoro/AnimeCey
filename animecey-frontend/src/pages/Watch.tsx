@@ -12,6 +12,7 @@ import { MultiTagAd } from "@/components/ads/MultiTagAd";
 import { MonetagAd } from "@/components/ads/MonetagAd";
 import { VastGate } from "@/components/ads/VastGate";
 import { BannerAd } from "@/components/ads/BannerAd";
+import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
 import { fetchEpisode, fetchEpisodes, fetchLikeStatus, getStreamUrl, likeEpisode, unlikeEpisode } from "@/api/episodes";
@@ -298,7 +299,7 @@ export default function Watch() {
             </button>
           </div>
 
-          <BannerAd className="mt-8" />
+          <AdsterraBanner format="native" className="mt-8" />
 
           <div className="px-4 md:px-0 mt-8">
             <CommentSection episodeId={episode.id} />

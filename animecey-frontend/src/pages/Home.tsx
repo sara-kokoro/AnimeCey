@@ -9,6 +9,7 @@ import { AnimeCard } from "@/components/anime/AnimeCard";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { LiveHome } from "@/components/home/LiveHome";
 import { BannerAd } from "@/components/ads/BannerAd";
+import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import { fetchAnimes, fetchLiveHome, fetchTopWeek, fetchTopRated, fetchLatest, fetchTrending } from "@/api/animes";
 import { motion } from "framer-motion";
 
@@ -69,6 +70,7 @@ export default function Home() {
             </button>
           </div>
         )}
+        <AdsterraBanner format="banner" className="mt-4 mb-2" />
         <div id="animes" className="scroll-mt-24" />
         {(topWeek.isLoading || (topWeek.data && topWeek.data.length > 0)) && (
           <Section title="Top 10 de la semaine">
@@ -90,7 +92,7 @@ export default function Home() {
           </HorizontalScroll>
         </Section>
 
-        <BannerAd className="my-10" />
+        <AdsterraBanner format="native" className="my-10" />
 
         {(filmsJp.isLoading || (filmsJp.data && filmsJp.data.items.length > 0)) && (
           <Section title="Films Japanime" href="/films-japanime">
