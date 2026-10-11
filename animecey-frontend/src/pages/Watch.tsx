@@ -13,6 +13,7 @@ import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
 import { fetchEpisode, fetchEpisodes, fetchLikeStatus, getStreamUrl, likeEpisode, unlikeEpisode } from "@/api/episodes";
 import { fetchAnime } from "@/api/animes";
+import { ReportButton } from "@/components/report/ReportButton";
 import { fetchAutoStream, fetchEpisodeServers, fetchSeasonLabels } from "@/api/catalog";
 import type { Language } from "@/types";
 
@@ -252,6 +253,7 @@ export default function Watch() {
 
             <div className="flex flex-wrap gap-2">
               <DownloadButton episodeId={episode.id} />
+              <ReportButton episodeId={episode.id} animeId={anime?.id} label="Signaler" />
               <button
                 disabled={!prev}
                 onClick={() => prev && navigate(`/watch/${prev.id}`)}

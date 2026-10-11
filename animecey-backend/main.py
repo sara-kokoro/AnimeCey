@@ -180,7 +180,7 @@ app.add_middleware(
 
 # ── Routers ────────────────────────────────────────────────────────────
 
-from routers import admin, anilist, animes, auth, comments, episodes, folders, notifications, push, search, tmcooper, tmdb, users  # noqa: E402
+from routers import admin, anilist, animes, auth, comments, episodes, folders, notifications, push, reports, search, tmcooper, tmdb, users  # noqa: E402
 from routers import calendar as calendar_router  # noqa: E402
 from routers import catalog as catalog_router  # noqa: E402
 
@@ -191,6 +191,7 @@ app.include_router(comments.router, prefix="/api/comments", tags=["Comments"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
 app.include_router(push.router, prefix="/api/push", tags=["Push"])
+app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
 app.include_router(search.router, prefix="/api/search", tags=["Search"])
 app.include_router(folders.router, prefix="/api/admin/folders", tags=["Admin - Folders"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])

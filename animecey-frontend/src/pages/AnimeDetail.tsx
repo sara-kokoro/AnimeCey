@@ -13,6 +13,7 @@ import { fetchEpisodes } from "@/api/episodes";
 import { ensureSeason, fetchSeasonLabels } from "@/api/catalog";
 import { addFavorite, fetchFavorites, removeFavorite } from "@/api/users";
 import { useAuthStore } from "@/stores/auth";
+import { ReportButton } from "@/components/report/ReportButton";
 import type { Language } from "@/types";
 
 export default function AnimeDetail() {
@@ -189,6 +190,7 @@ export default function AnimeDetail() {
                   <Heart className={`w-4 h-4 ${favorite ? "fill-primary text-primary" : ""}`} />
                   {favorite ? "Retiré des favoris" : "Ajouter aux favoris"}
                 </button>
+                <ReportButton animeId={Number(id)} className="px-5 py-2.5" />
               </div>
             </div>
           </div>

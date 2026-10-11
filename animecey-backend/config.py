@@ -62,6 +62,9 @@ class _Settings:
         "VAPID_CLAIMS_EMAIL", "admin@jessicanime.vercel.app"
     )
 
+    # Adresse publique du site (liens dans les signalements envoyés au bot)
+    SITE_URL: str = os.getenv("SITE_URL", "https://magi-stream.online").rstrip("/")
+
     # CORS
     CORS_ORIGINS: List[str] = [
         o.strip()

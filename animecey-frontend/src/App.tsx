@@ -37,6 +37,7 @@ const App = () => (
           <Route path="/search" element={<Search />} />
           <Route path="/catalogue" element={<Catalogue />} />
           <Route path="/films" element={<Catalogue presetType="film" title="Films" subtitle="Longs métrages : animation et prises de vue réelles." />} />
+          <Route path="/films-japanime" element={<Catalogue presetType="film" presetCategory="anime" title="Films Japanime" subtitle="Les longs métrages d'animation japonaise : Your Name, Les Enfants du temps et bien d'autres." />} />
           <Route path="/series" element={<Catalogue presetType="serie" title="Séries" subtitle="Des sagas épiques aux tranches de vie intimistes." />} />
           <Route path="/genres" element={<Genres />} />
           <Route path="/calendrier" element={<Calendrier />} />

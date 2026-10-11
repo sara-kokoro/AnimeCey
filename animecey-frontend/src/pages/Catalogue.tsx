@@ -13,11 +13,13 @@ import type { CatalogFilters } from "@/types";
 
 interface Props {
   presetType?: "serie" | "film";
+  /** Impose la catégorie (« anime » = animation japonaise) et masque le sélecteur Tout / Animés / Films & séries. */
+  presetCategory?: "anime" | "live";
   title?: string;
   subtitle?: string;
 }
 
-export default function Catalogue({ presetType, title, subtitle }: Props = {}) {
+export default function Catalogue({ presetType, presetCategory, title, subtitle }: Props = {}) {
   const params = useParams();
   const genreParam = params.slug ? decodeURIComponent(params.slug) : undefined;
   const [searchParams] = useSearchParams();
@@ -28,7 +30,7 @@ export default function Catalogue({ presetType, title, subtitle }: Props = {}) {
     type: presetType ?? "all",
     genres: genreParam ? [genreParam] : [],
     sort: "az",
-    category: initialCategory,
+    category: presetCategory ?? initialCategory,
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -93,6 +95,7 @@ export default function Catalogue({ presetType, title, subtitle }: Props = {}) {
           </button>
         </div>
 
+        {!presetCategory && (
         <div className="mt-5">
           <ToggleGroup2
             size="sm"
@@ -108,6 +111,7 @@ export default function Catalogue({ presetType, title, subtitle }: Props = {}) {
             ]}
           />
         </div>
+        )}
 
         <div className="mt-6 grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-6 lg:gap-10">
           <aside className="hidden lg:block">

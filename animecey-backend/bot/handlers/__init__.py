@@ -11,6 +11,8 @@ from bot.handlers.ajouter import register as register_ajouter
 from bot.handlers.supprimer import register as register_supprimer
 from bot.handlers.alias import register as register_alias
 from bot.handlers.delsaison import register as register_delsaison
+from bot.handlers.delep import register as register_delep
+from bot.handlers.signalements import register as register_signalements
 from bot.handlers.live import register as register_live
 from bot.handlers.calendrier import register as register_calendrier
 
@@ -24,6 +26,8 @@ def register_all(bot):
     register_supprimer(bot)     # /supprimer : supprimer un animé (avec confirmation)
     register_alias(bot)         # /alias : autres noms d'un animé (recherche)
     register_delsaison(bot)     # /delsaison : supprimer une seule saison
+    register_delep(bot)         # /delep : supprimer un seul épisode
+    register_signalements(bot)  # /signalements : problèmes signalés depuis le site
     register_live(bot)          # /add : films et séries live-action (TMDB)
     register_calendrier(bot)    # /check, /calsync : calendrier des sorties
     register_admin(bot)

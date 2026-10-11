@@ -100,6 +100,8 @@ HELP_TEXT = (
     "Autorise ou retire le téléchargement des épisodes d'un titre (à n'activer que pour ce dont tu détiens la licence). "
     "/dl <n°> montre l'état, /dl seul liste les titres activés.\n"
     "\n"
+    "🗑 /delep <n° animé> <n° épisode> [VF|VOSTFR] [saison] — supprimer UN épisode (ex. /delep 16 5 VF, /delep 16 12 S02)\n"
+    "🚩 /signalements — problèmes signalés par les visiteurs (les nouveaux arrivent tout seuls ici)\n"
     "🔎 /list <titre> — trouver le n° d'un animé\n"
     "📂 /ep <n° dossier> — épisodes d'un dossier\n"
     "📊 /status — statistiques\n"

@@ -9,6 +9,7 @@ import { useAuthStore } from "@/stores/auth";
 const links = [
   { to: "/catalogue", label: "Catalogue" },
   { to: "/films", label: "Films" },
+  { to: "/films-japanime", label: "Films Japanime" },
   { to: "/series", label: "Séries" },
   { to: "/genres", label: "Genres" },
   { to: "/calendrier", label: "Calendrier" },

@@ -8,7 +8,7 @@ import { RankedRow } from "@/components/home/RankedRow";
 import { AnimeCard } from "@/components/anime/AnimeCard";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { LiveHome } from "@/components/home/LiveHome";
-import { fetchLiveHome, fetchTopWeek, fetchTopRated, fetchLatest, fetchTrending } from "@/api/animes";
+import { fetchAnimes, fetchLiveHome, fetchTopWeek, fetchTopRated, fetchLatest, fetchTrending } from "@/api/animes";
 import { motion } from "framer-motion";
 
 function CardList({ data, isLoading }: { data?: unknown[]; isLoading: boolean }) {
@@ -29,6 +29,12 @@ export default function Home() {
   const topRated = useQuery({ queryKey: ["top-rated"], queryFn: fetchTopRated });
   const latest = useQuery({ queryKey: ["latest"], queryFn: fetchLatest });
   const trending = useQuery({ queryKey: ["trending"], queryFn: fetchTrending });
+  // Films d'animation japonaise (Your Name, Les Enfants du temps...) : rangée masquée s'il n'y en a pas
+  const filmsJp = useQuery({
+    queryKey: ["films-japanime"],
+    queryFn: () => fetchAnimes({ type: "film", category: "anime", sort: "recent", limit: 12 }),
+    staleTime: 60_000,
+  });
   // Films & séries (live-action) : une requête pour toute la zone ; rien ne s'affiche s'il n'y en a pas encore
   const live = useQuery({ queryKey: ["live-home"], queryFn: fetchLiveHome, staleTime: 60_000 });
   const hasLive = !!live.data && (live.data.featured.length > 0 || live.data.latest.length > 0);
@@ -82,6 +88,14 @@ export default function Home() {
             <CardList data={latest.data} isLoading={latest.isLoading} />
           </HorizontalScroll>
         </Section>
+
+        {(filmsJp.isLoading || (filmsJp.data && filmsJp.data.items.length > 0)) && (
+          <Section title="Films Japanime" href="/films-japanime">
+            <HorizontalScroll>
+              <CardList data={filmsJp.data?.items} isLoading={filmsJp.isLoading} />
+            </HorizontalScroll>
+          </Section>
+        )}
 
         {(trending.isLoading || (trending.data && trending.data.length > 0)) && (
           <Section title={`Tendances · ${seasonLabel()}`}>
