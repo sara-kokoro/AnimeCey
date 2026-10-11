@@ -126,6 +126,11 @@ class R2Storage:
         )
 
     @property
+    def public_base(self) -> str:
+        """Adresse publique du bucket (R2_PUBLIC_URL), sans « / » final."""
+        return self._public_url
+
+    @property
     def is_configured(self) -> bool:
         return all(
             (self._access_key_id, self._secret_access_key, self._bucket, self._endpoint_url)
@@ -227,6 +232,26 @@ class R2Storage:
         await self._call("put", key, _put)
         logger.info("R2 put %s (%d bytes)", key, len(payload))
         return len(payload)
+
+    async def put_bytes(
+        self,
+        key: str,
+        data: bytes,
+        *,
+        content_type: str,
+        cache_control: str | None = None,
+    ) -> int:
+        """Upload a binary object (image, ...). Overwrites. Returns the size in bytes."""
+        extra: dict[str, Any] = {}
+        if cache_control:
+            extra["CacheControl"] = cache_control
+
+        def _put(client: Any) -> None:
+            client.put_object(Bucket=self._bucket, Key=key, Body=data, ContentType=content_type, **extra)
+
+        await self._call("put", key, _put)
+        logger.info("R2 put %s (%d bytes)", key, len(data))
+        return len(data)
 
     async def get_json(self, key: str) -> dict[str, Any]:
         """Download and parse a JSON object. Raises ``R2NotFoundError`` if absent."""

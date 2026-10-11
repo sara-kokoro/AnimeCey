@@ -65,6 +65,13 @@ class _Settings:
     # Adresse publique du site (liens dans les signalements envoyés au bot)
     SITE_URL: str = os.getenv("SITE_URL", "https://magi-stream.online").rstrip("/")
 
+    # Cloudflare R2 : stockage des vignettes d'épisodes. Facultatif : sans ces variables, rien ne change.
+    R2_ACCESS_KEY_ID: str = os.getenv("R2_ACCESS_KEY_ID", "")
+    R2_SECRET_ACCESS_KEY: str = os.getenv("R2_SECRET_ACCESS_KEY", "")
+    R2_BUCKET_NAME: str = os.getenv("R2_BUCKET_NAME", "")
+    R2_ENDPOINT_URL: str = os.getenv("R2_ENDPOINT_URL", "")  # https://<ID_COMPTE>.r2.cloudflarestorage.com
+    R2_PUBLIC_URL: str = os.getenv("R2_PUBLIC_URL", "").rstrip("/")  # ex. https://img.magi-stream.online
+
     # CORS
     CORS_ORIGINS: List[str] = [
         o.strip()

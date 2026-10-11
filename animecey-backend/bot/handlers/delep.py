@@ -30,7 +30,7 @@ from database import async_session
 from models import Anime, Episode, LanguageEnum
 from models_catalog import AnimeSeason
 from models_reports import Report
-from services import report_notify
+from services import report_notify, thumbs
 from services.caption_parser import command_args, parse_anime_args, pretty_label
 
 logger = logging.getLogger(__name__)
@@ -133,6 +133,7 @@ async def _delete_episode(client: Client, ep_id: int, with_channel: bool) -> str
         label = _ep_label(ep, {ep.season_number: season.label} if season else {})
         title = anime.title if anime else f"animé {ep.anime_id}"
 
+        thumb_version = ep.thumb_msg_id  # sert à retrouver la vignette sur R2
         msgs = {m for m in (ep.servcey1_msg_id, ep.thumb_msg_id) if m}
         if msgs:  # ne jamais effacer un message du canal encore utilisé par un autre épisode
             others = (
@@ -160,6 +161,7 @@ async def _delete_episode(client: Client, ep_id: int, with_channel: bool) -> str
         await db.execute(delete(Episode).where(Episode.id == ep_id))
         await db.commit()
 
+    await thumbs.delete(ep_id, thumb_version)  # vignette R2 (sans effet si R2 n'est pas configuré)
     text = f"🗑 {label} supprimé de « {title} »."
     if with_channel and msgs:
         done = await _delete_channel_messages(client, sorted(msgs))

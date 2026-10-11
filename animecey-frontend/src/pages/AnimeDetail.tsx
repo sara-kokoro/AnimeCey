@@ -14,6 +14,7 @@ import { ensureSeason, fetchSeasonLabels } from "@/api/catalog";
 import { addFavorite, fetchFavorites, removeFavorite } from "@/api/users";
 import { useAuthStore } from "@/stores/auth";
 import { ReportButton } from "@/components/report/ReportButton";
+import { BannerAd } from "@/components/ads/BannerAd";
 import type { Language } from "@/types";
 
 export default function AnimeDetail() {
@@ -198,6 +199,7 @@ export default function AnimeDetail() {
       </section>
 
       <main className="mx-auto max-w-7xl px-4 md:px-6 mt-8 pb-20">
+        <BannerAd className="mb-8" />
         <div className="flex flex-wrap items-center gap-4 mb-6 min-w-0">
           {anime.languages_available.length > 0 && (
             <div className="min-w-0 max-w-full">

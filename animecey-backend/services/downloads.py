@@ -1,6 +1,6 @@
 """Téléchargement d'épisodes : tickets signés, limite par utilisateur, nom de fichier.
 
-Déroulement : le front demande un ticket (compte connecté obligatoire), affiche la pub Monetag et un
+Déroulement : le front demande un ticket (compte connecté obligatoire), affiche la pub (lien direct HilltopAds) et un
 compte à rebours, puis ouvre /api/episodes/{id}/download?ticket=... Le serveur refuse le ticket tant que
 le délai n'est pas écoulé, donc appeler directement l'adresse du fichier ne permet pas de sauter la pub.
 

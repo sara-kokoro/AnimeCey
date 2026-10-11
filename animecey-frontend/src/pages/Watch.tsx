@@ -8,7 +8,8 @@ import { Footer } from "@/components/layout/Footer";
 import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { ServCeyPlayer } from "@/components/player/ServCeyPlayer";
 import { DownloadButton } from "@/components/player/DownloadButton";
-import { VignetteAd } from "@/components/ads/VignetteAd";
+import { MultiTagAd } from "@/components/ads/MultiTagAd";
+import { BannerAd } from "@/components/ads/BannerAd";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
 import { fetchEpisode, fetchEpisodes, fetchLikeStatus, getStreamUrl, likeEpisode, unlikeEpisode } from "@/api/episodes";
@@ -179,7 +180,7 @@ export default function Watch() {
       className="min-h-screen bg-background"
     >
       <Navbar />
-      <VignetteAd />
+      <MultiTagAd />
 
       <div className="pt-16 mx-auto max-w-[1500px] px-0 md:px-6 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
         <div className="min-w-0">
@@ -291,6 +292,8 @@ export default function Watch() {
               {likes}
             </button>
           </div>
+
+          <BannerAd className="mt-8" />
 
           <div className="px-4 md:px-0 mt-8">
             <CommentSection episodeId={episode.id} />

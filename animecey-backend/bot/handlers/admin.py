@@ -102,6 +102,7 @@ HELP_TEXT = (
     "\n"
     "🗑 /delep <n° animé> <n° épisode> [VF|VOSTFR] [saison] — supprimer UN épisode (ex. /delep 16 5 VF, /delep 16 12 S02)\n"
     "🚩 /signalements — problèmes signalés par les visiteurs (les nouveaux arrivent tout seuls ici)\n"
+    "🖼 /thumbsr2 — envoyer les vignettes vers Cloudflare R2 (/thumbsr2 etat pour suivre, /thumbsr2 stop)\n"
     "🔎 /list <titre> — trouver le n° d'un animé\n"
     "📂 /ep <n° dossier> — épisodes d'un dossier\n"
     "📊 /status — statistiques\n"

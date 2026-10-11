@@ -41,6 +41,7 @@ from database import async_session
 from models import Anime, AnimeType, Episode, LanguageEnum
 from models_catalog import AnimeSeason
 from services import media as media_service
+from services import thumbs
 from services.caption_parser import (
     Parsed, command_args, kind_of, merge_missing, norm, parse_anime_args_ex, parse_caption, pretty_label,
 )
@@ -346,6 +347,7 @@ async def _save_episode(
     duration: int | None,
     allow_replace: bool = False,
     thumb_msg_id: int | None = None,
+    thumb_bytes: bytes | None = None,
 ) -> tuple[bool, list[int]]:
     """Enregistre l'épisode. Renvoie (remplacé ?, anciens messages du canal à supprimer)."""
     sent_media = get_media_from_message(sent)
@@ -386,11 +388,13 @@ async def _save_episode(
                 ep.duration = duration
             await db.flush()  # pour avoir ep.id
             base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
-            if thumb_msg_id and base:
+            # Cloudflare R2 si configuré (la vignette est servie sans passer par ton serveur), sinon l'ancienne route
+            r2_url = await thumbs.store(ep.id, thumb_bytes, thumb_msg_id) if (thumb_msg_id and thumb_bytes) else None
+            if thumb_msg_id and (base or r2_url):
                 if replaced and ep.thumb_msg_id and ep.thumb_msg_id != thumb_msg_id:
                     stale.append(ep.thumb_msg_id)
                 ep.thumb_msg_id = thumb_msg_id
-                ep.thumbnail_url = f"{base}/api/episodes/{ep.id}/thumb?v={thumb_msg_id}"
+                ep.thumbnail_url = r2_url or f"{base}/api/episodes/{ep.id}/thumb?v={thumb_msg_id}"
             await db.commit()
             return replaced, stale
 
@@ -640,7 +644,8 @@ def register(bot: Client):
 
             thumb_msg_id = await _store_thumb(client, thumb_bytes)
             replaced, stale = await _save_episode(
-                ctx, language, p.episode, sent, duration, allow_replace=replace_ok, thumb_msg_id=thumb_msg_id
+                ctx, language, p.episode, sent, duration, allow_replace=replace_ok,
+                thumb_msg_id=thumb_msg_id, thumb_bytes=thumb_bytes,
             )
             saved = True
             purged = await _purge_stale(client, stale)  # remplacement : l'ancien fichier ne reste pas dans le canal

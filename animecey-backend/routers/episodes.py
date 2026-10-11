@@ -5,8 +5,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,7 @@ from config import settings
 from database import get_db
 from models import Anime, DownloadLog, Episode, EpisodeLike, User
 from schemas import EpisodePublic, LikeResponse, StreamResponse
-from services import byse, downloads
+from services import byse, downloads, thumbs
 from services.stream_token import check_token, make_token
 
 logger = logging.getLogger(__name__)
@@ -329,9 +329,15 @@ _thumb_cache: dict[int, bytes] = {}
 
 
 @router.get("/{episode_id}/thumb")
-async def episode_thumb(episode_id: int, db: AsyncSession = Depends(get_db)):
-    """Vignette de l'épisode, lue depuis le canal Telegram puis gardée en cache."""
+async def episode_thumb(episode_id: int, background: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    """Vignette de l'épisode : sur R2 si elle y est (redirection), sinon lue dans le canal Telegram.
+
+    Avec R2 configuré, une vignette encore dans Telegram est envoyée sur R2 à la première lecture :
+    l'API renvoie ensuite directement l'adresse R2 et ce point d'accès n'est plus sollicité.
+    """
     ep = (await db.execute(select(Episode).where(Episode.id == episode_id))).scalar_one_or_none()
+    if ep and thumbs.is_r2_url(ep.thumbnail_url):
+        return RedirectResponse(ep.thumbnail_url, status_code=302, headers={"Cache-Control": "public, max-age=3600"})
     if not ep or not ep.thumb_msg_id:
         raise HTTPException(status_code=404, detail="Vignette introuvable")
     data = _thumb_cache.get(ep.thumb_msg_id)
@@ -352,9 +358,12 @@ async def episode_thumb(episode_id: int, db: AsyncSession = Depends(get_db)):
         except Exception as exc:  # noqa: BLE001
             logger.exception("thumb ep %s", episode_id)
             raise HTTPException(status_code=503, detail=f"Erreur Telegram: {exc}")
-        if len(_thumb_cache) >= 400:
-            _thumb_cache.pop(next(iter(_thumb_cache)))
-        _thumb_cache[ep.thumb_msg_id] = data
+        if thumbs.enabled():
+            background.add_task(thumbs.migrate_one, ep.id, data, ep.thumb_msg_id)  # R2 : plus de cache en mémoire
+        else:
+            if len(_thumb_cache) >= 400:
+                _thumb_cache.pop(next(iter(_thumb_cache)))
+            _thumb_cache[ep.thumb_msg_id] = data
     return Response(
         content=data,
         media_type="image/jpeg",

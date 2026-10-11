@@ -5,10 +5,11 @@ import { Check, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuthStore } from "@/stores/auth";
+import { HILLTOP } from "@/config/ads";
 import { downloadFileUrl, fetchDownloadInfo, requestDownloadTicket } from "@/api/episodes";
 
-// Lien Monetag (SmartLink) ouvert avant le téléchargement. Surchargeable avec VITE_MONETAG_SMARTLINK.
-const SMARTLINK: string = import.meta.env.VITE_MONETAG_SMARTLINK ?? "https://uplcm.com/4/11978082";
+// Lien direct HilltopAds (DirectLink) ouvert avant le téléchargement : voir src/config/ads.ts. Sans lien : pas de pub.
+const DIRECT_LINK: string = HILLTOP.directLink.trim();
 
 type Phase = "idle" | "waiting" | "ready";
 
@@ -71,12 +72,14 @@ export function DownloadButton({ episodeId }: { episodeId: number }) {
 
   const onContinue = async () => {
     // La pub doit s'ouvrir directement depuis le clic, sinon le navigateur la bloque.
-    const ad = window.open(SMARTLINK, "_blank");
-    if (!ad) {
-      toast.error("Autorise les pop-ups pour ce site, puis réessaie.");
-      return;
+    if (DIRECT_LINK) {
+      const ad = window.open(DIRECT_LINK, "_blank");
+      if (!ad) {
+        toast.error("Autorise les pop-ups pour ce site, puis réessaie.");
+        return;
+      }
+      ad.opener = null;
     }
-    ad.opener = null;
     setPhase("waiting");
     try {
       const res = await requestDownloadTicket(episodeId);
@@ -122,7 +125,9 @@ export function DownloadButton({ episodeId }: { episodeId: number }) {
             <DialogTitle className="font-display">Télécharger l'épisode</DialogTitle>
             <DialogDescription className="font-body">
               {phase === "idle" &&
-                "Une publicité s'ouvre dans un nouvel onglet, puis le téléchargement démarre. Merci de soutenir le site !"}
+                (DIRECT_LINK
+                  ? "Une publicité s'ouvre dans un nouvel onglet, puis le téléchargement démarre. Merci de soutenir le site !"
+                  : "Le téléchargement démarre après un court décompte. Merci de soutenir le site !")}
               {phase === "waiting" && "Ton téléchargement va démarrer. Laisse cette page ouverte."}
               {phase === "ready" && "C'est prêt !"}
             </DialogDescription>
