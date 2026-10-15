@@ -73,13 +73,19 @@ class _Settings:
     R2_PUBLIC_URL: str = os.getenv("R2_PUBLIC_URL", "").rstrip("/")  # ex. https://img.magi-stream.online
 
     # CORS
-    CORS_ORIGINS: List[str] = [
-        o.strip()
-        for o in os.getenv(
-            "CORS_ORIGINS", "http://localhost:5173,https://jessicanime.vercel.app,https://animecey.vercel.app,https://magi-stream.online"
-        ).split(",")
-        if o.strip()
-    ]
+    # Le domaine principal est https://www.magi-stream.online (l'apex redirige vers www) :
+    # les deux doivent être autorisés, même si la variable CORS_ORIGINS de Koyeb est incomplète.
+    CORS_ORIGINS: List[str] = list(dict.fromkeys(
+        [
+            o.strip().rstrip("/")
+            for o in os.getenv(
+                "CORS_ORIGINS",
+                "http://localhost:5173,https://jessicanime.vercel.app,https://animecey.vercel.app,https://magi-stream.online,https://www.magi-stream.online",
+            ).split(",")
+            if o.strip()
+        ]
+        + ["https://magi-stream.online", "https://www.magi-stream.online"]
+    ))
 
     # TMCooper (AnimeSamaApi) — instance Flask déployée à part (ex. Koyeb)
     TMCOOPER_API_URL: str = os.getenv("TMCOOPER_API_URL", "http://127.0.0.1:5000").rstrip("/")
