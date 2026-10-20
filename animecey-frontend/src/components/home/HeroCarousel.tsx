@@ -59,13 +59,13 @@ export function HeroCarousel() {
   if (!anime) {
     // Chargement : bloc animé discret. Rien à afficher : bandeau de bienvenue.
     return (
-      <section className="relative w-full h-[56vh] md:h-[70vh] min-h-[380px] overflow-hidden bg-background flex items-end">
+      <section className="relative w-full h-[56svh] md:h-[70vh] min-h-[380px] overflow-hidden bg-background flex items-end">
         <div className="absolute inset-0 bg-gradient-to-br from-surface via-background to-background" />
         <div className="absolute -top-24 -right-24 w-[420px] h-[420px] rounded-full bg-primary/10 blur-3xl" />
         <div className={"relative z-10 mx-auto w-full max-w-7xl px-4 md:px-6 pb-14 md:pb-20 " + (isLoading ? "animate-pulse" : "")}>
-          <h1 className="font-display font-extrabold text-4xl md:text-6xl text-foreground leading-[1.05]">
+          <p className="font-display font-extrabold text-4xl md:text-6xl text-foreground leading-[1.05]">
             Magi-<span className="text-primary">Stream</span>
-          </h1>
+          </p>
           <p className="mt-3 max-w-xl text-muted-foreground font-body md:text-lg">
             {isLoading ? "Chargement des animés…" : "Tes animés en VF et VOSTFR, sans pub."}
           </p>
@@ -87,7 +87,7 @@ export function HeroCarousel() {
     <section
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      className="relative w-full h-[70vh] md:h-[88vh] min-h-[520px] overflow-hidden bg-background"
+      className="relative w-full h-[68svh] md:h-[88vh] min-h-[460px] overflow-hidden bg-background"
       aria-label="Animés en vedette"
     >
       <AnimatePresence mode="sync">
@@ -100,8 +100,10 @@ export function HeroCarousel() {
           className="absolute inset-0"
         >
           <img
-            src={anime.banner_url || anime.poster_url}
-            alt={anime.title}
+            src={(anime.banner_url || anime.poster_url || "/placeholder.svg").replace(/^http:\/\//, "https://")}
+            alt={`${anime.title} en streaming VF et VOSTFR`}
+            referrerPolicy="no-referrer"
+            onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/placeholder.svg"; }}
             className={"w-full h-full object-cover " + (anime.banner_url ? "" : "scale-110 blur-sm")}
             fetchPriority="high"
           />
@@ -130,9 +132,9 @@ export function HeroCarousel() {
               ))}
             </div>
 
-            <h1 className="font-display font-extrabold text-4xl md:text-6xl text-white leading-[1.05] drop-shadow-[0_2px_20px_rgba(0,0,0,0.5)]">
+            <h2 className="font-display font-extrabold text-3xl sm:text-4xl md:text-6xl text-white leading-[1.05] drop-shadow-[0_2px_20px_rgba(0,0,0,0.5)] line-clamp-3">
               {anime.title}
-            </h1>
+            </h2>
 
             <div className="flex items-center gap-3 mt-3 text-sm font-body">
               <span className="inline-flex items-center gap-1.5 text-primary font-semibold">

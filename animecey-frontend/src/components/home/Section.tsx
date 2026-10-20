@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { ReactNode } from "react";
 
 interface Props {
-  title: string;
+  title: ReactNode;
   /** Lien « Voir tout » : affiché seulement s'il est fourni. */
   href?: string;
   children: ReactNode;
