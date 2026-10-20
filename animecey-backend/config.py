@@ -80,7 +80,7 @@ class _Settings:
             o.strip().rstrip("/")
             for o in os.getenv(
                 "CORS_ORIGINS",
-                "http://localhost:5173,https://jessicanime.vercel.app,https://animecey.vercel.app,https://magi-stream.online,https://www.magi-stream.online",
+                "http://localhost:5173,https://jessicanime.vercel.app,https://animecey.vercel.app,https://magi-stream.online,https://www.magi-stream.online,https://magi-episode-orbit.lovable.app",
             ).split(",")
             if o.strip()
         ]
