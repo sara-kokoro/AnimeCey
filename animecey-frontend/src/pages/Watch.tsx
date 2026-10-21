@@ -1,8 +1,8 @@
-import { useParams, Navigate, Link, useNavigate } from "react-router-dom";
+import { useParams, Navigate, Link, useNavigate } from "@/lib/router";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Heart, Loader2 } from "lucide-react";
+import { Heart, Languages, LayoutGrid, List, Loader2, Server, SkipBack, SkipForward } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
@@ -30,6 +30,7 @@ export default function Watch() {
   const [likes, setLikes] = useState(0);
   const [loading, setLoading] = useState(true);
   const [langNotice, setLangNotice] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "grid">("list");
 
   const { data: episode, isLoading: loadingEp } = useQuery({
     queryKey: ["episode", Number(id)],
@@ -174,6 +175,9 @@ export default function Watch() {
   const prev = currentIndex > 0 ? episodes[currentIndex - 1] : null;
   const next = currentIndex >= 0 && currentIndex < episodes.length - 1 ? episodes[currentIndex + 1] : null;
 
+  const pillBtn =
+    "inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-surface border border-border-subtle text-sm font-semibold hover:bg-surface-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -184,138 +188,163 @@ export default function Watch() {
       <Navbar />
       <MultiTagAd />
 
-      <div className="pt-16 mx-auto max-w-[1500px] px-0 md:px-6 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
-        <div className="min-w-0">
-          <div className="relative w-full aspect-video bg-black md:rounded-2xl overflow-hidden">
-            {loading && !noSource && !isDirectVideo && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Loader2 className="w-10 h-10 text-primary animate-spin" />
-              </div>
+      <div className="pt-16 mx-auto max-w-6xl md:px-6">
+        <div className="relative w-full aspect-video bg-background md:rounded-2xl overflow-hidden md:mt-4 ring-1 ring-border">
+          {loading && !noSource && !isDirectVideo && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader2 className="w-10 h-10 text-primary animate-spin" />
+            </div>
+          )}
+          <VastGate key={episode.id}>
+          {playerUrl && isDirectVideo ? (
+            <ServCeyPlayer
+              key={`${episode.id}-${selectedKey}-${lang}`}
+              src={playerUrl}
+              title={anime?.title ?? "Anime"}
+              subtitle={`${seasonLabel} — Épisode ${episode.episode_number} · ${episode.language}`}
+              storageKey={String(episode.id)}
+              onReady={() => setLoading(false)}
+              hasNext={!!next}
+              onNext={() => next && navigate(`/watch/${next.id}`)}
+            />
+          ) : playerUrl ? (
+            <motion.iframe
+              key={`${episode.id}-${selectedKey}-${lang}`}
+              src={playerUrl}
+              title={`${anime?.title ?? "Anime"} - ${episode.title ?? `Épisode ${episode.episode_number}`}`}
+              className="w-full h-full"
+              allow="autoplay; encrypted-media; fullscreen"
+              allowFullScreen
+              onLoad={() => setLoading(false)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.4 }}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
+              {noSource ? "Source non disponible pour ce serveur." : ""}
+            </div>
+          )}
+          </VastGate>
+        </div>
+
+        <div className="px-4 md:px-0">
+          {/* Titre */}
+          <div className="mt-5">
+            {anime && (
+              <Link to={`/anime/${anime.id}`} className="text-xs font-bold uppercase tracking-wider text-primary hover:text-primary-dim">
+                {anime.title}
+              </Link>
             )}
-            <VastGate key={episode.id}>
-            {playerUrl && isDirectVideo ? (
-              <ServCeyPlayer
-                key={`${episode.id}-${selectedKey}-${lang}`}
-                src={playerUrl}
-                title={anime?.title ?? "Anime"}
-                subtitle={`${seasonLabel} — Épisode ${episode.episode_number} · ${episode.language}`}
-                storageKey={String(episode.id)}
-                onReady={() => setLoading(false)}
-                hasNext={!!next}
-                onNext={() => next && navigate(`/watch/${next.id}`)}
-              />
-            ) : playerUrl ? (
-              <motion.iframe
-                key={`${episode.id}-${selectedKey}-${lang}`}
-                src={playerUrl}
-                title={`${anime?.title ?? "Anime"} - ${episode.title ?? `Épisode ${episode.episode_number}`}`}
-                className="w-full h-full"
-                allow="autoplay; encrypted-media; fullscreen"
-                allowFullScreen
-                onLoad={() => setLoading(false)}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.4 }}
-              />
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center text-muted-foreground font-body text-sm">
-                {noSource ? "Source non disponible pour ce serveur." : ""}
-              </div>
-            )}
-            </VastGate>
+            <h1 className="mt-1 font-display font-extrabold text-xl md:text-3xl leading-tight">
+              Épisode {episode.episode_number}
+              {episode.title ? ` : ${episode.title}` : ""}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="px-2.5 py-1 rounded-full bg-foreground/10 font-semibold">{seasonLabel}</span>
+              <span className="px-2.5 py-1 rounded-full bg-primary/15 text-primary font-semibold">{episode.language}</span>
+            </div>
           </div>
 
-          <div className="px-4 md:px-0 mt-4 flex flex-col md:flex-row gap-4 md:items-end md:justify-between min-w-0">
-            <div className="flex flex-wrap gap-5 min-w-0 max-w-full">
-              <div className="min-w-0 max-w-full">
-                <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold mb-1.5">
-                  Serveur
+          {/* Commandes rapides */}
+          <div className="mt-4 flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0">
+            <button disabled={!prev} onClick={() => prev && navigate(`/watch/${prev.id}`)} className={pillBtn + " shrink-0"}>
+              <SkipBack className="w-4 h-4" />
+              Précédent
+            </button>
+            <button
+              disabled={!next}
+              onClick={() => next && navigate(`/watch/${next.id}`)}
+              className="shrink-0 inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary-dim transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Suivant
+              <SkipForward className="w-4 h-4" />
+            </button>
+            <button onClick={toggleLike} className={pillBtn + " shrink-0"} aria-pressed={liked}>
+              <Heart className={`w-4 h-4 ${liked ? "fill-highlight text-highlight" : ""}`} />
+              {likes}
+            </button>
+            <div className="shrink-0">
+              <DownloadButton episodeId={episode.id} />
+            </div>
+            <div className="shrink-0">
+              <ReportButton episodeId={episode.id} animeId={anime?.id} label="Signaler" />
+            </div>
+          </div>
+
+          {/* Langues + serveurs */}
+          <div className="mt-5 rounded-2xl bg-surface border border-border-subtle p-4 space-y-4">
+            {anime?.languages_available && anime.languages_available.length > 0 && (
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5">
+                  <Languages className="w-3.5 h-3.5" /> Langue
                 </p>
                 <ToggleGroup2
                   size="sm"
-                  value={selectedKey}
-                  onChange={(v) => { setServerKey(String(v)); setLoading(true); }}
-                  options={serverOptions}
+                  value={lang}
+                  onChange={(v) => switchLanguage(v as Language)}
+                  options={anime.languages_available.map((l) => ({ value: l, label: l }))}
                 />
+                {langNotice && <p className="text-xs text-muted-foreground mt-1.5">{langNotice}</p>}
               </div>
-              {anime?.languages_available && anime.languages_available.length > 0 && (
-                <div className="min-w-0 max-w-full">
-                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-body font-semibold mb-1.5">
-                    Langue
-                  </p>
-                  <ToggleGroup2
-                    size="sm"
-                    value={lang}
-                    onChange={(v) => switchLanguage(v as Language)}
-                    options={anime.languages_available.map((l) => ({ value: l, label: l }))}
-                  />
-                  {langNotice && (
-                    <p className="text-xs text-muted-foreground font-body mt-1.5">{langNotice}</p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <DownloadButton episodeId={episode.id} />
-              <ReportButton episodeId={episode.id} animeId={anime?.id} label="Signaler" />
-              <button
-                disabled={!prev}
-                onClick={() => prev && navigate(`/watch/${prev.id}`)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:border-primary/40 transition-colors"
-              >
-                <ChevronLeft className="w-4 h-4" />
-                Précédent
-              </button>
-              <button
-                disabled={!next}
-                onClick={() => next && navigate(`/watch/${next.id}`)}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:border-primary/40 transition-colors"
-              >
-                Suivant
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          <div className="px-4 md:px-0 mt-6 flex items-start gap-4">
-            <div className="flex-1 min-w-0">
-              <h1 className="font-display font-extrabold text-xl md:text-2xl">
-                {anime?.title ?? "Anime"}
-              </h1>
-              <p className="text-muted-foreground font-body mt-1">
-                {seasonLabel} — Épisode {episode.episode_number}
-                {episode.title ? ` : ${episode.title}` : ""}
+            )}
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold mb-2 inline-flex items-center gap-1.5">
+                <Server className="w-3.5 h-3.5" /> Serveur
               </p>
+              <ToggleGroup2
+                size="sm"
+                value={selectedKey}
+                onChange={(v) => { setServerKey(String(v)); setLoading(true); }}
+                options={serverOptions}
+              />
             </div>
-            <button
-              onClick={toggleLike}
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold hover:border-primary/40 transition-colors"
-            >
-              <Heart className={`w-4 h-4 ${liked ? "fill-primary text-primary" : ""}`} />
-              {likes}
-            </button>
           </div>
+
+          {/* Épisodes */}
+          <section className="mt-8">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h2 className="font-display font-bold text-lg">
+                Épisodes <span className="text-muted-foreground font-normal text-sm">· {seasonLabel}</span>
+              </h2>
+              <div className="flex rounded-full bg-surface border border-border-subtle p-1">
+                <button
+                  onClick={() => setView("list")}
+                  aria-label="Mode liste"
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${view === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                >
+                  <List className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setView("grid")}
+                  aria-label="Mode grille"
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${view === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            {view === "list" ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {episodes.map((ep, i) => (
+                  <EpisodeCard key={ep.id} episode={ep} seasonLabel={seasonLabel} index={i} active={ep.id === episode.id} compact />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                {episodes.map((ep, i) => (
+                  <EpisodeCard key={ep.id} episode={ep} variant="grid" index={i} active={ep.id === episode.id} />
+                ))}
+              </div>
+            )}
+          </section>
 
           <AdsterraBanner format="native" className="mt-8" />
 
-          <div className="px-4 md:px-0 mt-8">
+          <div className="mt-8">
             <CommentSection episodeId={episode.id} />
           </div>
         </div>
-
-        <aside className="hidden lg:block">
-          <div className="sticky top-20">
-            <h3 className="font-display font-bold text-sm mb-3">
-              Épisodes — {seasonLabel}
-            </h3>
-            <div className="space-y-2 max-h-[calc(100vh-6rem)] overflow-y-auto pr-1">
-              {episodes.map((ep, i) => (
-                <EpisodeCard key={ep.id} episode={ep} anime={anime ?? undefined} index={i} compact />
-              ))}
-            </div>
-          </div>
-        </aside>
       </div>
 
       <Footer />

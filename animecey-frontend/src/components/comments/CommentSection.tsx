@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Heart, Send, Loader2 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
-import { Link } from "react-router-dom";
+import { Link } from "@/lib/router";
 import { Avatar } from "./Avatar";
 import { fetchComments, createComment, likeComment, unlikeComment, type CommentData } from "@/api/comments";
 import { useAuthStore } from "@/stores/auth";

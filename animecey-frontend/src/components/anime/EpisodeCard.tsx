@@ -1,5 +1,5 @@
-import { Link } from "react-router-dom";
-import { Heart, MessageCircle } from "lucide-react";
+import { Link } from "@/lib/router";
+import { Clock, Heart, MessageCircle, Play } from "lucide-react";
 import type { Episode } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -74,57 +74,72 @@ export function EpisodeCard({
     );
   }
 
+  // Mode Liste : grand numéro en filigrane, vignette 16:9, durée, badge, titre.
   return (
     <Link
       to={`/watch/${episode.id}`}
       className={cn(
-        "group flex gap-3 p-2 rounded-xl transition-colors duration-200 hover:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-        active && "bg-surface border-l-[3px] border-primary",
+        "group relative flex items-center gap-3 p-2 pr-3 rounded-xl overflow-hidden border transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+        active ? "bg-primary/10 border-primary/50" : "bg-surface border-transparent hover:bg-surface-2",
       )}
     >
+      <span
+        aria-hidden
+        className="pointer-events-none select-none absolute -right-1 -bottom-5 font-display font-black text-[88px] leading-none text-outline opacity-60"
+      >
+        {episode.episode_number}
+      </span>
       <div
         className={cn(
           "relative shrink-0 overflow-hidden rounded-lg bg-surface-2",
-          compact ? "w-[88px] aspect-video" : "w-[120px] md:w-[160px] aspect-video",
+          compact ? "w-[112px] aspect-video" : "w-[136px] md:w-[176px] aspect-video",
         )}
       >
-        {!episode.thumbnail_url && (
-          <div className="absolute inset-0 flex items-center justify-center font-display font-extrabold text-2xl text-muted-foreground/40">
-            {episode.episode_number}
-          </div>
-        )}
-        {episode.thumbnail_url && (
+        {episode.thumbnail_url ? (
           <img
             src={episode.thumbnail_url}
             alt={`Épisode ${episode.episode_number}`}
             loading="lazy"
             className={cn(
-              "absolute inset-0 w-full h-full object-cover transition-all duration-300",
+              "absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105",
               blurred && "blur-md scale-110",
             )}
           />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center font-display font-extrabold text-2xl text-muted-foreground/40">
+            {episode.episode_number}
+          </div>
         )}
-        <span className="absolute top-1.5 left-1.5 bg-black/75 text-white text-[10px] font-semibold font-body px-1.5 py-0.5 rounded">
-          Ép. {episode.episode_number}
-        </span>
-        <span className="absolute top-1.5 right-1.5 bg-primary text-primary-foreground text-[10px] font-semibold font-body px-1.5 py-0.5 rounded">
-          {episode.language}
-        </span>
+        <div className="absolute inset-0 flex items-center justify-center bg-background/40 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="w-9 h-9 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+            <Play className="w-4 h-4 fill-current ml-0.5" />
+          </span>
+        </div>
+        {minutes && (
+          <span className="absolute bottom-1 right-1 bg-background/85 text-foreground text-[10px] font-semibold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            {minutes} min
+          </span>
+        )}
       </div>
 
-      <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
-        <div className="min-w-0">
-          <h4 className="font-display font-semibold text-sm text-foreground line-clamp-2 group-hover:text-primary transition-colors">
-            {episode.title ? `${episode.episode_number}. ${episode.title}` : `Épisode ${episode.episode_number}`}
-          </h4>
-          {!compact && (
-            <p className="text-xs text-muted-foreground mt-0.5 font-body truncate">
-              {where}
-              {minutes ? ` · ${minutes} min` : ""}
-            </p>
+      <div className="relative flex-1 min-w-0 py-0.5">
+        <div className="flex items-center gap-1.5 mb-1">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-primary">Ép. {episode.episode_number}</span>
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-foreground/10 text-foreground">
+            {episode.language}
+          </span>
+          {active && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-highlight text-highlight-foreground">
+              En cours
+            </span>
           )}
         </div>
-        <div className="flex items-center gap-3 text-muted-foreground text-xs">
+        <h4 className="font-display font-semibold text-sm text-foreground line-clamp-2 group-hover:text-primary transition-colors">
+          {episode.title || `Épisode ${episode.episode_number}`}
+        </h4>
+        {!compact && <p className="text-xs text-muted-foreground mt-0.5 truncate">{where}</p>}
+        <div className="mt-1 flex items-center gap-3 text-muted-foreground text-xs">
           <span className="inline-flex items-center gap-1">
             <Heart className="w-3.5 h-3.5" />
             {episode.likes_count}

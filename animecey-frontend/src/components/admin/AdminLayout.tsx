@@ -1,4 +1,4 @@
-import { Link, NavLink, Navigate, Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink, Navigate, Outlet, useLocation } from "@/lib/router";
 import { useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -94,7 +94,7 @@ export function AdminLayout({ children }: { children?: ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-60 shrink-0 bg-[hsl(var(--background))] border-r border-border min-h-screen sticky top-0">
+      <aside className="hidden md:flex flex-col w-60 shrink-0 bg-background border-r border-border min-h-screen sticky top-0">
         <SidebarContent username={user.username} email={user.email} onLogout={handleLogout} />
       </aside>
 

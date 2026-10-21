@@ -26,11 +26,11 @@ export function ToggleGroup2<T extends Val>({
             key={String(opt.value)}
             onClick={() => onChange(opt.value)}
             className={cn(
-              "shrink-0 rounded-lg font-body font-semibold transition-all duration-200 border",
+              "shrink-0 rounded-full font-body font-semibold transition-all duration-200 border",
               size === "sm" ? "px-3.5 py-1.5 text-xs" : "px-4 py-2 text-sm",
               active
                 ? "bg-primary text-primary-foreground border-primary"
-                : "bg-surface text-muted-foreground border-border hover:text-foreground hover:border-border-subtle",
+                : "bg-surface text-muted-foreground border-border-subtle hover:text-foreground hover:bg-surface-2",
             )}
           >
             {opt.label}

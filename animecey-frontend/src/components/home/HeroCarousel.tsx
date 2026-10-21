@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Play, Plus, Star } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Calendar, Check, Film, Info, Play, Plus, Star, Tv } from "lucide-react";
+import { Link, useNavigate } from "@/lib/router";
 import { Badge2 } from "@/components/ui/Badge2";
 import { fetchFeatured } from "@/api/animes";
 import { addToWatchlist, fetchWatchlist, removeFromWatchlist } from "@/api/users";
@@ -83,105 +83,128 @@ export function HeroCarousel() {
     );
   }
 
+  const bg = (anime.banner_url || anime.poster_url || "/placeholder.svg").replace(/^http:\/\//, "https://");
+  const poster = (anime.poster_url || "/placeholder.svg").replace(/^http:\/\//, "https://");
+  const langs = anime.languages_available ?? [];
+
   return (
     <section
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      className="relative w-full h-[68svh] md:h-[88vh] min-h-[460px] overflow-hidden bg-background"
+      className="relative w-full min-h-[640px] md:min-h-[92vh] overflow-hidden bg-background"
       aria-label="Animés en vedette"
     >
       <AnimatePresence mode="sync">
         <motion.div
           key={anime.id}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          initial={{ opacity: 0, scale: 1.05 }}
+          animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.8 }}
+          transition={{ duration: 0.9 }}
           className="absolute inset-0"
         >
           <img
-            src={(anime.banner_url || anime.poster_url || "/placeholder.svg").replace(/^http:\/\//, "https://")}
-            alt={`${anime.title} en streaming VF et VOSTFR`}
+            src={bg}
+            alt=""
             referrerPolicy="no-referrer"
             onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "/placeholder.svg"; }}
-            className={"w-full h-full object-cover " + (anime.banner_url ? "" : "scale-110 blur-sm")}
+            className={"w-full h-full object-cover " + (anime.banner_url ? "opacity-70" : "scale-110 blur-xl opacity-60")}
             fetchPriority="high"
           />
-          <div
-            className="absolute inset-0"
-            style={{ background: "var(--gradient-hero)" }}
-          />
+          <div className="absolute inset-0 bg-gradient-hero" />
+          <div className="absolute inset-0 bg-background/30" />
         </motion.div>
       </AnimatePresence>
 
-      <div className="relative z-10 h-full mx-auto max-w-7xl px-4 md:px-6 flex flex-col justify-end pb-20 md:pb-32">
+      <div className="relative z-10 mx-auto max-w-5xl px-4 pt-24 md:pt-32 pb-12 flex flex-col items-center text-center">
         <AnimatePresence mode="wait">
           <motion.div
             key={anime.id}
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="max-w-2xl"
+            transition={{ duration: 0.5 }}
+            className="flex flex-col items-center"
           >
-            <div className="flex flex-wrap gap-2 mb-4">
-              {(anime.genres ?? []).slice(0, 3).map((g) => (
-                <Badge2 key={g} variant="genre">
-                  {g}
-                </Badge2>
-              ))}
-            </div>
+            <Link
+              to={`/anime/${anime.id}`}
+              className="block w-[170px] md:w-[220px] aspect-[2/3] rounded-2xl overflow-hidden shadow-card ring-1 ring-foreground/10"
+            >
+              <img
+                src={poster}
+                alt={`Affiche de ${anime.title}`}
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
+            </Link>
 
-            <h2 className="font-display font-extrabold text-3xl sm:text-4xl md:text-6xl text-white leading-[1.05] drop-shadow-[0_2px_20px_rgba(0,0,0,0.5)] line-clamp-3">
+            <h2 className="mt-6 font-display font-black text-3xl sm:text-4xl md:text-6xl text-foreground leading-[1.05] max-w-3xl line-clamp-2">
               {anime.title}
             </h2>
 
-            <div className="flex items-center gap-3 mt-3 text-sm font-body">
-              <span className="inline-flex items-center gap-1.5 text-primary font-semibold">
-                <Star className="w-4 h-4 fill-primary" />
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/15 text-primary border border-primary/30 text-[11px] font-bold">
+                <Star className="w-3.5 h-3.5 fill-current" />
                 {anime.score}
               </span>
-              <span className="text-muted-foreground">•</span>
-              <span className="text-muted-foreground">{anime.year}</span>
-              <span className="text-muted-foreground">•</span>
-              <span className="text-muted-foreground">
-                {anime.type === "film" ? "Film" : `${anime.episodes_count} épisodes`}
+              {anime.year ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-foreground/10 border border-foreground/15 text-[11px] font-semibold">
+                  <Calendar className="w-3.5 h-3.5" />
+                  {anime.year}
+                </span>
+              ) : null}
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-foreground/10 border border-foreground/15 text-[11px] font-semibold">
+                {anime.type === "film" ? <Film className="w-3.5 h-3.5" /> : <Tv className="w-3.5 h-3.5" />}
+                {anime.type === "film" ? "Film" : `${anime.episodes_count} ép.`}
               </span>
+              {langs.map((l) => (
+                <span key={l} className="px-2.5 py-1 rounded-full bg-foreground/10 border border-foreground/15 text-[11px] font-semibold">
+                  {l}
+                </span>
+              ))}
+              {(anime.genres ?? []).slice(0, 2).map((g) => (
+                <Badge2 key={g} variant="genre">{g}</Badge2>
+              ))}
             </div>
 
-            <p className="hidden md:block text-base text-muted-foreground font-body mt-4 line-clamp-3 max-w-xl">
-              {anime.synopsis}
-            </p>
+            <p className="hidden md:block mt-4 text-muted-foreground max-w-2xl line-clamp-2">{anime.synopsis}</p>
 
-            <div className="flex flex-wrap gap-3 mt-6">
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
               <Link
                 to={`/anime/${anime.id}`}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-body font-semibold hover:bg-primary-dim transition-all hover:scale-[1.02] shadow-[var(--shadow-glow)]"
+                className="inline-flex items-center gap-2 px-7 py-3 rounded-full bg-primary text-primary-foreground font-semibold hover:bg-primary-dim transition-all hover:scale-[1.03] shadow-glow"
               >
                 <Play className="w-4 h-4 fill-current" />
                 Regarder
               </Link>
+              <Link
+                to={`/anime/${anime.id}`}
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-foreground/10 border border-foreground/20 backdrop-blur font-semibold hover:bg-foreground/15 transition-colors"
+              >
+                <Info className="w-4 h-4" />
+                Plus d'infos
+              </Link>
               <button
                 onClick={toggleWatchlist}
                 disabled={busy}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-white/10 text-white border border-white/20 backdrop-blur font-body font-semibold hover:bg-white/15 transition-all hover:scale-[1.02] disabled:opacity-60"
+                aria-label={inList ? "Retirer de ma liste" : "Ajouter à ma liste"}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-foreground/10 border border-foreground/20 backdrop-blur font-semibold hover:bg-foreground/15 transition-colors disabled:opacity-60"
               >
                 {inList ? <Check className="w-4 h-4 text-primary" /> : <Plus className="w-4 h-4" />}
-                {inList ? "Dans ma watchlist" : "Watchlist"}
+                {inList ? "Ajouté" : "Ajouter"}
               </button>
             </div>
           </motion.div>
         </AnimatePresence>
 
-        {/* Indicators */}
-        <div className="flex items-center gap-3 mt-10">
+        <div className="flex items-center gap-2 mt-8">
           {featured.map((a, i) => (
             <button
               key={a.id}
               aria-label={`Slide ${i + 1}`}
               onClick={() => setIdx(i)}
-              className="group/dot relative h-1 rounded-full overflow-hidden bg-white/25 transition-all"
-              style={{ width: i === idx ? 56 : 24 }}
+              className="relative h-1.5 rounded-full overflow-hidden bg-foreground/25 transition-all"
+              style={{ width: i === idx ? 40 : 10 }}
             >
               {i === idx && !paused && (
                 <motion.span
@@ -192,9 +215,7 @@ export function HeroCarousel() {
                   className="absolute inset-y-0 left-0 bg-primary"
                 />
               )}
-              {i === idx && paused && (
-                <span className="absolute inset-0 bg-primary" />
-              )}
+              {i === idx && paused && <span className="absolute inset-0 bg-primary" />}
             </button>
           ))}
         </div>

@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
 import { fr } from "date-fns/locale";
-import { CheckCircle2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Bell, CalendarX, CheckCircle2, ChevronLeft, ChevronRight, Clock, Info, Loader2, Play } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { cn } from "@/lib/utils";
@@ -24,7 +24,7 @@ function parseDay(s: string): Date {
   return new Date(y, m - 1, d);
 }
 
-function CalendarCard({ entry }: { entry: CalendarEntry }) {
+function CalendarRow({ entry }: { entry: CalendarEntry }) {
   const when = new Date(entry.release_at);
   const localTime = format(when, "HH:mm");
   const parisTime = new Intl.DateTimeFormat("fr-FR", {
@@ -32,60 +32,68 @@ function CalendarCard({ entry }: { entry: CalendarEntry }) {
     minute: "2-digit",
     timeZone: "Europe/Paris",
   }).format(when);
+  const released = entry.available || when.getTime() <= Date.now();
 
-  const body = (
-    <>
-      <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-surface shadow-[var(--shadow-card)] transition-all duration-200 group-hover:scale-[1.03]">
-        {entry.poster_url ? (
-          <img
-            src={entry.poster_url}
-            alt={entry.title}
-            loading="lazy"
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center p-3 text-center text-xs font-display font-semibold text-muted-foreground">
-            {entry.title}
-          </div>
-        )}
-        <div className="absolute inset-0" style={{ background: "var(--gradient-card)" }} />
-
-        <span className="absolute top-2 left-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold font-body text-white">
-          E{entry.episode}
+  return (
+    <li className="relative flex gap-3 md:gap-4">
+      {/* Repère chronologique */}
+      <div className="flex flex-col items-center w-14 shrink-0 pt-3">
+        <span className={cn("font-display font-bold text-sm", released ? "text-foreground" : "text-muted-foreground")}>
+          {localTime}
         </span>
-        <span className="absolute top-2 right-2 rounded-md bg-primary px-2 py-0.5 text-[10px] font-semibold font-body text-primary-foreground">
-          {entry.language}
-        </span>
-
-        {entry.available && (
-          <span className="absolute bottom-2 right-2 flex items-center gap-1 rounded-md bg-emerald-600/90 px-1.5 py-0.5 text-[10px] font-semibold font-body text-white">
-            <CheckCircle2 className="w-3 h-3" /> En ligne
-          </span>
-        )}
-
-        <div className="absolute inset-x-0 bottom-7 text-center">
-          <span className="font-display font-extrabold text-2xl text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]">
-            {localTime}
-          </span>
-        </div>
+        <span className={cn("mt-2 w-2.5 h-2.5 rounded-full", entry.available ? "bg-primary" : released ? "bg-highlight" : "bg-border-subtle")} />
+        <span className="flex-1 w-px bg-border mt-1" />
       </div>
-      <h3 className="mt-2 text-[13px] font-display font-semibold text-foreground line-clamp-2 leading-tight">
-        {entry.title}
-      </h3>
-      <p className="text-[11px] text-muted-foreground font-body">{entry.season}</p>
-    </>
-  );
 
-  const className = "group block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary";
-  const hint = `Heure française : ${parisTime}`;
-  return entry.anime_id ? (
-    <Link to={`/anime/${entry.anime_id}`} className={className} title={hint}>
-      {body}
-    </Link>
-  ) : (
-    <div className={className} title={hint}>
-      {body}
-    </div>
+      <div className="flex-1 min-w-0 mb-3 rounded-2xl bg-surface border border-border-subtle p-3 flex gap-3 items-center" title={`Heure française : ${parisTime}`}>
+        <div className="relative w-16 md:w-20 aspect-[2/3] shrink-0 rounded-xl overflow-hidden bg-surface-2">
+          {entry.poster_url ? (
+            <img src={entry.poster_url} alt={entry.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+          ) : null}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {entry.available ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-bold">
+                <CheckCircle2 className="w-3 h-3" /> En ligne
+              </span>
+            ) : released ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-highlight/15 text-highlight text-[10px] font-bold">
+                <Loader2 className="w-3 h-3 animate-spin" /> Bientôt en ligne
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-foreground/10 text-muted-foreground text-[10px] font-bold">
+                <Clock className="w-3 h-3" /> À venir
+              </span>
+            )}
+            <span className="px-2 py-0.5 rounded-full bg-foreground/10 text-[10px] font-semibold">{entry.language}</span>
+          </div>
+          <h3 className="mt-1 font-display font-semibold text-sm md:text-base leading-tight line-clamp-1">{entry.title}</h3>
+          <p className="text-xs text-muted-foreground">
+            {entry.season} · Épisode {entry.episode}
+          </p>
+        </div>
+        {entry.anime_id ? (
+          <Link
+            to={`/anime/${entry.anime_id}`}
+            aria-label={entry.available ? `Regarder ${entry.title}` : `Voir ${entry.title}`}
+            className={cn(
+              "shrink-0 inline-flex items-center gap-1.5 h-9 px-3 md:px-4 rounded-full text-xs font-semibold transition-colors",
+              entry.available
+                ? "bg-primary text-primary-foreground hover:bg-primary-dim"
+                : "bg-surface-2 border border-border-subtle hover:bg-border",
+            )}
+          >
+            {entry.available ? <Play className="w-3.5 h-3.5 fill-current" /> : <Info className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">{entry.available ? "Regarder" : "Fiche"}</span>
+          </Link>
+        ) : (
+          <span className="shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-full bg-surface-2 text-xs font-semibold text-muted-foreground">
+            <Bell className="w-3.5 h-3.5" />
+          </span>
+        )}
+      </div>
+    </li>
   );
 }
 
@@ -133,7 +141,9 @@ export default function Calendrier() {
   const keys = days.map((d) => format(d, DAY_KEY));
   const selectedKey =
     picked && keys.includes(picked) ? picked : keys.includes(todayKey) ? todayKey : keys[0];
-  const entries = byDay[selectedKey] ?? [];
+  const entries = [...(byDay[selectedKey] ?? [])].sort(
+    (a, b) => new Date(a.release_at).getTime() - new Date(b.release_at).getTime(),
+  );
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const goToWeek = (next: number) => {
@@ -149,21 +159,21 @@ export default function Calendrier() {
       className="min-h-screen bg-background"
     >
       <Navbar />
-      <main className="pt-24 md:pt-28 pb-20 mx-auto max-w-7xl px-4 md:px-6">
+      <main className="pt-20 md:pt-28 pb-20 mx-auto max-w-4xl px-4 md:px-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h1 className="font-display font-extrabold text-3xl md:text-4xl">Calendrier</h1>
-            <p className="text-sm text-muted-foreground font-body mt-2">
-              Horaires affichés dans ton heure locale ({timeZone}). Survole une carte pour voir l'heure française.
+            <h1 className="font-display font-black text-3xl md:text-4xl">Calendrier</h1>
+            <p className="text-xs text-muted-foreground mt-2">
+              Horaires dans ton heure locale ({timeZone}).
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 p-1 rounded-full bg-surface border border-border-subtle">
             <button
               type="button"
               onClick={() => goToWeek(week - 1)}
               aria-label="Semaine précédente"
-              className="p-2 rounded-lg border border-border hover:bg-card transition-colors"
+              className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-2"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -171,8 +181,8 @@ export default function Calendrier() {
               type="button"
               onClick={() => goToWeek(0)}
               className={cn(
-                "px-3 py-2 rounded-lg border border-border text-sm font-body transition-colors",
-                week === 0 ? "bg-card text-muted-foreground" : "hover:bg-card",
+                "px-3 h-8 rounded-full text-xs font-semibold transition-colors",
+                week === 0 ? "text-muted-foreground" : "hover:bg-surface-2",
               )}
             >
               Cette semaine
@@ -181,57 +191,62 @@ export default function Calendrier() {
               type="button"
               onClick={() => goToWeek(week + 1)}
               aria-label="Semaine suivante"
-              className="p-2 rounded-lg border border-border hover:bg-card transition-colors"
+              className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-2"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        <div className="mt-6 flex gap-2">
-          {(["all", "VF", "VOSTFR"] as LangFilter[]).map((l) => (
-            <button
-              key={l}
-              type="button"
-              onClick={() => setLang(l)}
-              className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-semibold font-body border transition-colors",
-                lang === l
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {l === "all" ? "Tous" : l}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-4 grid grid-cols-7 gap-1.5 md:gap-2">
+        <div className="mt-5 flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0 py-1">
           {days.map((d) => {
             const key = format(d, DAY_KEY);
             const active = key === selectedKey;
+            const isToday = key === todayKey;
+            const count = (byDay[key] ?? []).length;
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => setPicked(key)}
                 className={cn(
-                  "rounded-lg border px-1 py-2 text-center transition-colors",
+                  "shrink-0 min-w-[64px] rounded-full px-4 py-2 text-center border transition-colors",
                   active
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-border hover:bg-card",
+                    ? "bg-primary text-primary-foreground border-primary shadow-glow"
+                    : "bg-surface border-border-subtle hover:bg-surface-2",
                 )}
               >
-                <span className="block text-[10px] md:text-xs font-semibold uppercase font-body">
-                  {format(d, "EEE", { locale: fr })}
+                <span className="block text-[11px] font-bold uppercase">
+                  {format(d, "EEE", { locale: fr }).replace(".", "")}
                 </span>
-                <span className="block text-xs md:text-sm font-display font-bold">{format(d, "dd/MM")}</span>
-                <span className={cn("block text-[10px] font-body", active ? "opacity-80" : "text-muted-foreground")}>
-                  {(byDay[key] ?? []).length || "–"}
-                </span>
+                <span className="block text-sm font-display font-bold leading-tight">{format(d, "dd")}</span>
+                <span
+                  className={cn(
+                    "mx-auto mt-0.5 block w-1.5 h-1.5 rounded-full",
+                    count === 0 ? "bg-transparent" : active ? "bg-primary-foreground" : isToday ? "bg-highlight" : "bg-primary",
+                  )}
+                />
               </button>
             );
           })}
+        </div>
+
+        <div className="mt-4 flex gap-2">
+          {(["all", "VF", "VOSTFR"] as LangFilter[]).map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => setLang(l)}
+              className={cn(
+                "px-3 h-8 rounded-full text-xs font-semibold border transition-colors",
+                lang === l
+                  ? "bg-foreground text-background border-foreground"
+                  : "border-border-subtle text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {l === "all" ? "Toutes langues" : l}
+            </button>
+          ))}
         </div>
 
         {isLoading ? (
@@ -239,19 +254,18 @@ export default function Calendrier() {
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
         ) : isError ? (
-          <p className="py-16 text-center text-sm text-muted-foreground font-body">
-            Impossible de charger le calendrier pour le moment.
-          </p>
+          <p className="py-16 text-center text-sm text-muted-foreground">Impossible de charger le calendrier pour le moment.</p>
         ) : entries.length === 0 ? (
-          <p className="py-16 text-center text-sm text-muted-foreground font-body">
-            Aucune sortie prévue ce jour-là.
-          </p>
-        ) : (
-          <div className="mt-6 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 md:gap-4">
-            {entries.map((e) => (
-              <CalendarCard key={e.id} entry={e} />
-            ))}
+          <div className="py-16 flex flex-col items-center text-center">
+            <CalendarX className="w-10 h-10 text-muted-foreground mb-3" />
+            <p className="text-sm text-muted-foreground">Aucune sortie prévue ce jour-là.</p>
           </div>
+        ) : (
+          <ol className="mt-6">
+            {entries.map((e) => (
+              <CalendarRow key={e.id} entry={e} />
+            ))}
+          </ol>
         )}
       </main>
       <Footer />

@@ -21,7 +21,7 @@ export function RankedRow({ data, isLoading }: { data?: Anime[]; isLoading: bool
                 "text-[104px] md:text-[132px] " +
                 (solid ? "text-primary" : "text-transparent")
               }
-              style={solid ? undefined : { WebkitTextStroke: "2px hsl(var(--primary))" }}
+              style={solid ? undefined : { WebkitTextStroke: "2px var(--primary)" }}
             >
               {i + 1}
             </span>

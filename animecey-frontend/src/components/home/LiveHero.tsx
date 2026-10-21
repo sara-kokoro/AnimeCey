@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Info, Play, Star } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "@/lib/router";
 import { Badge2 } from "@/components/ui/Badge2";
 import type { Anime } from "@/types";
 

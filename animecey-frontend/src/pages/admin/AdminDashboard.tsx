@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Film, Play, Users, MessageSquare, Plus, Loader2 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "@/lib/router";
 import { formatDistanceToNow } from "date-fns";
 import { fr } from "date-fns/locale";
 import { fetchAdminStats } from "@/api/admin";
@@ -73,7 +73,7 @@ export default function AdminDashboard() {
                   <span className="text-[10px] uppercase font-body font-bold text-primary bg-primary/10 px-1.5 py-0.5 rounded border border-primary/30">
                     {String(u.language)}
                   </span>
-                  {u.created_at && (
+                  {!!u.created_at && (
                     <span className="text-xs text-muted-foreground font-body whitespace-nowrap">
                       {formatDistanceToNow(new Date(String(u.created_at)), { addSuffix: true, locale: fr })}
                     </span>

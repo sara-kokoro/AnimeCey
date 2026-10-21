@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link } from "@/lib/router";
 import { Flame, Sparkles, Star, Film } from "lucide-react";
 import type { ReactNode } from "react";
 import { Navbar } from "@/components/layout/Navbar";
@@ -10,6 +10,7 @@ import { Section } from "@/components/home/Section";
 import { HorizontalScroll } from "@/components/ui/HorizontalScroll";
 import { RankedRow } from "@/components/home/RankedRow";
 import { LiveHome } from "@/components/home/LiveHome";
+import { LatestReleasesRail } from "@/components/home/LatestReleasesRail";
 import { AnimeCard } from "@/components/anime/AnimeCard";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
@@ -26,25 +27,6 @@ function Row({ data, isLoading }: { data?: Anime[]; isLoading: boolean }) {
   if (isLoading) return <>{Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}</>;
   if (!data || data.length === 0) return <p className="text-muted-foreground text-sm">Aucun résultat</p>;
   return <>{data.slice(0, 12).map((a, i) => <AnimeCard key={a.id} anime={a} index={i} />)}</>;
-}
-
-/** Grille façon Aniflix : 3 colonnes sur mobile, jusqu'à 6 sur grand écran */
-function PosterGrid({ data, isLoading, max = 12 }: { data?: Anime[]; isLoading: boolean; max?: number }) {
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 md:gap-5">
-        {Array.from({ length: 6 }).map((_, i) => <div key={i} className="aspect-[2/3] rounded-xl shimmer" />)}
-      </div>
-    );
-  }
-  if (!data || data.length === 0) return <p className="text-muted-foreground text-sm">Aucun résultat</p>;
-  return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3 md:gap-5">
-      {data.slice(0, max).map((a, i) => (
-        <AnimeCard key={a.id} anime={a} index={i} fullWidth />
-      ))}
-    </div>
-  );
 }
 
 function Title({ icon, children }: { icon: ReactNode; children: ReactNode }) {
@@ -113,28 +95,31 @@ export default function Home() {
       <main className="mx-auto max-w-7xl px-3 md:px-6">
         <SocialBarAd />
 
-        <nav aria-label="Sections" className="mt-6 flex gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 md:mx-0 md:px-0">
-          <button onClick={() => jump("animes")} className="shrink-0 px-4 py-2 rounded-full bg-primary text-primary-foreground text-sm font-body font-semibold">
+        <nav aria-label="Sections" className="mt-2 flex gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 md:mx-0 md:px-0">
+          <button onClick={() => jump("animes")} className="shrink-0 px-4 py-2 rounded-full bg-primary text-primary-foreground text-sm font-semibold">
             Animés
           </button>
           {hasLive && (
-            <button onClick={() => jump("films-series")} className="shrink-0 px-4 py-2 rounded-full bg-surface border border-border-subtle text-foreground text-sm font-body font-semibold hover:bg-surface-2 transition-colors">
+            <button onClick={() => jump("films-series")} className="shrink-0 px-4 py-2 rounded-full bg-surface border border-border-subtle text-sm font-semibold hover:bg-surface-2 transition-colors">
               Films &amp; Séries
             </button>
           )}
-          <Link to="/catalogue" className="shrink-0 px-4 py-2 rounded-full bg-surface border border-border-subtle text-foreground text-sm font-body font-semibold hover:bg-surface-2 transition-colors">
-            Catalogue
-          </Link>
-          <Link to="/calendrier" className="shrink-0 px-4 py-2 rounded-full bg-surface border border-border-subtle text-foreground text-sm font-body font-semibold hover:bg-surface-2 transition-colors">
-            Calendrier
-          </Link>
-          <Link to="/genres" className="shrink-0 px-4 py-2 rounded-full bg-surface border border-border-subtle text-foreground text-sm font-body font-semibold hover:bg-surface-2 transition-colors">
-            Genres
-          </Link>
+          {[
+            { to: "/catalogue", label: "Catalogue" },
+            { to: "/calendrier", label: "Calendrier" },
+            { to: "/genres", label: "Genres" },
+          ].map((l) => (
+            <Link key={l.to} to={l.to} className="shrink-0 px-4 py-2 rounded-full bg-surface border border-border-subtle text-sm font-semibold hover:bg-surface-2 transition-colors">
+              {l.label}
+            </Link>
+          ))}
         </nav>
+
+        <LatestReleasesRail />
 
         <AdsterraBanner format="banner" className="mt-4 mb-2" />
         <div id="animes" className="scroll-mt-24" />
+
 
         {(trending.isLoading || (trending.data && trending.data.length > 0)) && (
           <Section title={<Title icon={<Flame className="w-5 h-5 text-primary" />}>{`Tendances · ${seasonLabel()}`}</Title>} href="/catalogue?sort=score">
@@ -153,13 +138,17 @@ export default function Home() {
         )}
 
         <Section title={<Title icon={<Sparkles className="w-5 h-5 text-primary" />}>Derniers ajouts</Title>} href="/catalogue?sort=recent">
-          <PosterGrid data={latest.data} isLoading={latest.isLoading} />
+          <HorizontalScroll>
+            <Row data={latest.data} isLoading={latest.isLoading} />
+          </HorizontalScroll>
         </Section>
 
         <AdsterraBanner format="native" className="my-8" />
 
         <Section title={<Title icon={<Star className="w-5 h-5 text-primary" />}>Les mieux notés</Title>} href="/catalogue?sort=score">
-          <PosterGrid data={topRated.data} isLoading={topRated.isLoading} />
+          <HorizontalScroll>
+            <Row data={topRated.data} isLoading={topRated.isLoading} />
+          </HorizontalScroll>
         </Section>
 
         {(filmsJp.isLoading || (filmsJp.data && filmsJp.data.items.length > 0)) && (

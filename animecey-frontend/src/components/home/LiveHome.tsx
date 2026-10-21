@@ -1,5 +1,5 @@
 import { Clapperboard } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "@/lib/router";
 import { Section } from "@/components/home/Section";
 import { LiveHero } from "@/components/home/LiveHero";
 import { RankedRow } from "@/components/home/RankedRow";

@@ -1,4 +1,4 @@
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "@/lib/router";
 import { useEffect, useState } from "react";
 import { Search, Menu, X, User, LogOut, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";

@@ -587,7 +587,7 @@ export function ServCeyPlayer({
               value={muted ? 0 : volume}
               onChange={(e) => changeVolume(parseFloat(e.target.value))}
               aria-label="Volume"
-              className="w-0 group-hover/vol:w-20 focus:w-20 transition-all duration-200 accent-[hsl(var(--primary))] cursor-pointer"
+              className="w-0 group-hover/vol:w-20 focus:w-20 transition-all duration-200 accent-primary cursor-pointer"
             />
           </div>
 

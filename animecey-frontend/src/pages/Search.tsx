@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Search as SearchIcon, X, Loader2, Plus } from "lucide-react";
@@ -125,7 +125,7 @@ export default function Search() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Rechercher un anime, un film..."
-            className="w-full bg-surface border border-border-subtle rounded-lg pl-12 pr-12 py-3.5 text-foreground placeholder:text-muted-foreground/70 font-body focus:outline-none focus:border-primary transition-colors"
+            className="w-full bg-surface border border-border-subtle rounded-full pl-12 pr-12 py-3.5 text-foreground placeholder:text-muted-foreground/70 font-body focus:outline-none focus:border-primary transition-colors"
           />
           {input && (
             <button

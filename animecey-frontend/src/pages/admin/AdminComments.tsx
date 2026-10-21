@@ -65,7 +65,7 @@ export default function AdminComments() {
                     <span className="font-body font-semibold text-sm">
                       {user?.username ? String(user.username) : "Utilisateur"}
                     </span>
-                    {c.anime_title && (
+                    {!!c.anime_title && (
                       <span className="text-xs text-muted-foreground font-body">
                         sur {String(c.anime_title)}
                       </span>
