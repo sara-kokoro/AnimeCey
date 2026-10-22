@@ -25,8 +25,11 @@ query ($search: String) {
     media(search: $search, type: ANIME) {
       id
       title { romaji english native }
+      synonyms
+      format
       description(asHtml: false)
       startDate { year }
+      seasonYear
       coverImage { extraLarge }
       bannerImage
       averageScore
@@ -43,6 +46,8 @@ query ($id: Int) {
   Media(id: $id, type: ANIME) {
     id
     title { romaji english native }
+    synonyms
+    format
     description(asHtml: false)
     startDate { year month day }
     endDate { year month day }
@@ -166,3 +171,161 @@ async def seasonal(sort: str = "TRENDING_DESC") -> list[dict]:
         raise
     _season_cache[key] = (time.time(), media)
     return media
+
+
+# ── Personnages / staff (fiche d'un animé) ─────────────────────────────────
+
+CREDITS_QUERY = """
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    characters(sort: [ROLE, RELEVANCE, ID], perPage: 14) {
+      edges {
+        role
+        node { id name { full native } image { large } }
+        voiceActors(language: JAPANESE, sort: [RELEVANCE, ID]) { id name { full } image { large } }
+      }
+    }
+    staff(sort: [RELEVANCE, ID], perPage: 14) {
+      edges { role node { id name { full } image { large } } }
+    }
+  }
+}
+"""
+
+RECS_QUERY = """
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    recommendations(sort: RATING_DESC, perPage: 25) {
+      nodes {
+        rating
+        mediaRecommendation {
+          id
+          title { romaji english native }
+          coverImage { extraLarge large }
+          format
+          averageScore
+          seasonYear
+        }
+      }
+    }
+  }
+}
+"""
+
+
+async def get_credits(anilist_id: int, db: AsyncSession) -> dict:
+    """{"characters": [{name, role, image, voice_actor, voice_actor_image}], "staff": [{name, role, image}]}."""
+    cache_key = f"anilist:credits:{anilist_id}"
+    cached = await _get_cache(db, cache_key, CACHE_DETAILS_TTL)
+    if cached is not None:
+        return cached
+
+    data = await _graphql(CREDITS_QUERY, {"id": anilist_id})
+    media = (data.get("data") or {}).get("Media") or {}
+    characters = []
+    for edge in (media.get("characters") or {}).get("edges") or []:
+        node = edge.get("node") or {}
+        name = (node.get("name") or {}).get("full")
+        if not name:
+            continue
+        va = (edge.get("voiceActors") or [None])[0] or {}
+        characters.append(
+            {
+                "name": name,
+                "role": {"MAIN": "Principal", "SUPPORTING": "Secondaire", "BACKGROUND": "Figurant"}.get(
+                    edge.get("role"), None
+                ),
+                "image": (node.get("image") or {}).get("large"),
+                "voice_actor": (va.get("name") or {}).get("full"),
+                "voice_actor_image": (va.get("image") or {}).get("large"),
+            }
+        )
+    staff = []
+    for edge in (media.get("staff") or {}).get("edges") or []:
+        node = edge.get("node") or {}
+        name = (node.get("name") or {}).get("full")
+        if name:
+            staff.append({"name": name, "role": edge.get("role"), "image": (node.get("image") or {}).get("large")})
+    result = {"characters": characters, "staff": staff}
+    if characters or staff:  # on ne garde pas une réponse vide (AniList peut être en panne)
+        await _set_cache(db, cache_key, result)
+    return result
+
+
+async def get_recommendations(anilist_id: int, db: AsyncSession) -> list[dict]:
+    """Animés recommandés par les utilisateurs d'AniList, du mieux noté au moins bien noté."""
+    cache_key = f"anilist:recs:{anilist_id}"
+    cached = await _get_cache(db, cache_key, CACHE_DETAILS_TTL)
+    if cached is not None:
+        return cached
+
+    data = await _graphql(RECS_QUERY, {"id": anilist_id})
+    nodes = (((data.get("data") or {}).get("Media") or {}).get("recommendations") or {}).get("nodes") or []
+    result = [n["mediaRecommendation"] for n in nodes if (n.get("rating") or 0) > 0 and n.get("mediaRecommendation")]
+    await _set_cache(db, cache_key, result)
+    return result
+
+
+# ── Calendrier des sorties (heure de la VO, en UTC) ───────────────────────
+
+AIRING_QUERY = """
+query ($from: Int, $to: Int, $page: Int) {
+  Page(page: $page, perPage: 50) {
+    pageInfo { hasNextPage }
+    airingSchedules(airingAt_greater: $from, airingAt_lesser: $to, sort: TIME) {
+      episode
+      airingAt
+      media {
+        id
+        title { romaji english native }
+        synonyms
+        format
+        isAdult
+        countryOfOrigin
+      }
+    }
+  }
+}
+"""
+
+_AIRING_FORMATS = {"TV", "TV_SHORT", "ONA", "OVA", "SPECIAL"}
+_AIRING_MAX_PAGES = 8
+
+
+async def airing_schedule(start: datetime, end: datetime) -> list[dict]:
+    """Sorties d'épisodes entre deux dates : [{anilist_id, title, titles, episode, airing_at (UTC)}].
+
+    Seulement les animés japonais non adultes, en série / ONA / OAV (pas les films, qui n'ont pas
+    d'« épisode » à la semaine). Lève une exception si AniList est injoignable.
+    """
+    out: list[dict] = []
+    page = 1
+    while page <= _AIRING_MAX_PAGES:
+        data = await _graphql(
+            AIRING_QUERY, {"from": int(start.timestamp()), "to": int(end.timestamp()), "page": page}
+        )
+        block = (data.get("data") or {}).get("Page") or {}
+        for row in block.get("airingSchedules") or []:
+            media = row.get("media") or {}
+            if media.get("isAdult") or media.get("countryOfOrigin") not in (None, "JP"):
+                continue
+            if media.get("format") not in _AIRING_FORMATS:
+                continue
+            t = media.get("title") or {}
+            title = t.get("english") or t.get("romaji") or t.get("native")
+            if not title or not row.get("episode") or not row.get("airingAt"):
+                continue
+            names = [n for n in (t.get("english"), t.get("romaji"), t.get("native"), *(media.get("synonyms") or [])) if n]
+            out.append(
+                {
+                    "anilist_id": int(media["id"]),
+                    "title": title,
+                    "titles": names,
+                    "episode": int(row["episode"]),
+                    "airing_at": datetime.fromtimestamp(int(row["airingAt"]), tz=timezone.utc),
+                }
+            )
+        if not (block.get("pageInfo") or {}).get("hasNextPage"):
+            break
+        page += 1
+    return out

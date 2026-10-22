@@ -2,6 +2,11 @@
 
   /ajouter Punchline            cherche sur TMDB (animation japonaise en premier)
   /ajouter tv:123456            ajoute directement la fiche TMDB (tv: série, movie: film)
+  /ajouter al <titre>           cherche directement sur AniList (quand TMDB n'a pas la fiche)
+  /ajouter al:154587            ajoute directement la fiche AniList (n° AniList)
+
+Sous les résultats TMDB, le bouton « Chercher sur AniList » relance la même recherche sur AniList.
+TMDB n'est pas remplacé : AniList est une recherche en plus (fiche en anglais, pas de synopsis FR).
 
 Le bot crée l'animé avec l'affiche, le synopsis, les genres, la note et la bande-annonce (TMDB +
 AniList), puis les saisons « Saison 1, 2... » de la fiche (ou « Film 1 » pour un film). Aucune
@@ -21,11 +26,17 @@ from bot.handlers.admin import is_admin
 from database import async_session
 from models import Anime, AnimeStatus, AnimeType
 from models_catalog import AnimeSeason
-from services import aliases, catalog_meta, tmdb
+from services import aliases, anilist, calendar_sync, catalog_meta, tmdb
 
 logger = logging.getLogger(__name__)
 
 _DIRECT = re.compile(r"^(tv|movie):(\d+)$", re.I)
+_DIRECT_AL = re.compile(r"^(?:al|anilist):(\d+)$", re.I)
+_AL_WORD = re.compile(r"^(?:al|anilist)\s+(.+)$", re.I)
+
+# Texte des recherches en attente : le bouton AniList ne peut pas contenir tout le titre (64 octets max)
+_PENDING: dict[str, str] = {}
+_PENDING_MAX = 200
 MAX_RESULTS = 8
 MAX_SEASONS = 15
 
@@ -143,6 +154,108 @@ async def _create(media: str, tmdb_id: int, category: str = "anime") -> str:
     )
 
 
+def _remember(query: str) -> str:
+    if len(_PENDING) >= _PENDING_MAX:
+        _PENDING.pop(next(iter(_PENDING)))
+    token = f"{abs(hash(query)) % 10**8:08d}"
+    _PENDING[token] = query
+    return token
+
+
+def _al_title(m: dict) -> str:
+    t = m.get("title") or {}
+    return t.get("english") or t.get("romaji") or t.get("native") or "?"
+
+
+async def _create_from_anilist(anilist_id: int) -> str:
+    """Crée la fiche d'un animé à partir d'AniList seul. Lève ValueError(message) si impossible."""
+    async with async_session() as db:
+        taken = (await db.execute(select(Anime.id, Anime.title).where(Anime.anilist_id == anilist_id))).first()
+        if taken:
+            raise ValueError(f"Déjà ajouté : « {taken.title} » (n°{taken.id}).")
+        details = dict(await anilist.get_details(anilist_id, db) or {})
+        if not details.get("id"):
+            raise ValueError("Fiche AniList introuvable.")
+        title = _al_title(details).strip()
+        same = (await db.execute(select(Anime.id).where(func.lower(Anime.title) == title.lower()))).first()
+        if same:
+            raise ValueError(f"Un animé « {title} » existe déjà (n°{same[0]}). Utilise /fiche {same[0]} pour changer sa fiche.")
+
+        meta = catalog_meta.merge_metadata(None, None, details, None)
+        is_film = details.get("format") == "MOVIE"
+        if is_film:
+            slot = ("film1", "Film 1")
+        else:
+            n = int(calendar_sync._anilist_season(  # noqa: SLF001
+                [v for v in (details.get("title") or {}).values() if v] + list(details.get("synonyms") or [])
+            ))
+            slot = (f"saison{n}", f"Saison {n}")
+        anime = Anime(
+            title=title[:255],
+            title_jp=meta.get("title_jp"),
+            type=AnimeType.film if is_film else AnimeType.serie,
+            status=AnimeStatus(meta.get("status") or "completed"),
+            synopsis=meta.get("synopsis"),
+            poster_url=meta.get("poster_url"),
+            banner_url=meta.get("banner_url"),
+            genres=meta.get("genres") or [],
+            score=meta.get("score") or 0.0,
+            year=meta.get("year"),
+            tmdb_id=None,
+            anilist_id=anilist_id,
+            trailer_url=meta.get("trailer_url"),
+            category="anime",
+        )
+        db.add(anime)
+        await db.flush()
+        db.add(
+            AnimeSeason(
+                anime_id=anime.id, season_number=1, api_season=slot[0], label=slot[1],
+                kind="film" if is_film else "saison",
+            )
+        )
+        await db.commit()
+        anime_id, anime_title = anime.id, anime.title
+        names = [n for n in ((details.get("title") or {}).get("native"), (details.get("title") or {}).get("romaji")) if n]
+
+    await aliases.add_aliases(anime_id, [anime_title, *names])
+    aliases.schedule_sync(anime_id)
+    return (
+        f"✅ « {anime_title} » ajouté depuis AniList (n°{anime_id}) — {slot[1]}.\n"
+        f"Envoie maintenant tes épisodes : /anime {anime_id} puis les fichiers, "
+        f"ou une légende du genre « {anime_title} S{slot[0][6:].zfill(2) if not is_film else '01'}E01 VOSTFR »."
+    )
+
+
+async def _anilist_results_reply(message_or_query, query: str, edit: bool) -> None:
+    """Affiche les résultats AniList pour `query` (nouveau message, ou édition du message du bouton)."""
+    try:
+        async with async_session() as db:
+            results = await anilist.search(query, db)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("/ajouter : recherche AniList en échec")
+        text, markup = f"❌ Recherche AniList impossible : {exc}", None
+    else:
+        results = (results or [])[:MAX_RESULTS]
+        if not results:
+            text, markup = f"Aucun résultat AniList pour « {query} » non plus. Essaie le titre japonais (romaji).", None
+        else:
+            lines, buttons = [f"Résultats AniList pour « {query} » — choisis :", ""], []
+            for i, r in enumerate(results, start=1):
+                year = r.get("seasonYear") or (r.get("startDate") or {}).get("year") or "?"
+                fmt = (r.get("format") or "").replace("_", " ").title()
+                eps = f" · {r['episodes']} ép." if r.get("episodes") else ""
+                lines.append(f"{i}. {_al_title(r)} ({year}) · {fmt}{eps}")
+                buttons.append(InlineKeyboardButton(str(i), callback_data=f"add:al:{r['id']}"))
+            rows = [buttons[i : i + 4] for i in range(0, len(buttons), 4)]
+            rows.append([InlineKeyboardButton("❌ Annuler", callback_data="add:cancel")])
+            text, markup = "\n".join(lines), InlineKeyboardMarkup(rows)
+    if edit:
+        await message_or_query.message.edit_text(text, reply_markup=markup)
+    else:
+        await message_or_query.reply(text, reply_markup=markup)
+
+
 def register(bot: Client):
 
     @bot.on_message(filters.private & filters.command("ajouter"))
@@ -156,6 +269,18 @@ def register(bot: Client):
                 "Ex. /ajouter Punchline\n"
                 "Ou directement une fiche TMDB : /ajouter tv:123456"
             )
+        direct_al = _DIRECT_AL.match(rest)
+        if direct_al:
+            try:
+                return await message.reply(await _create_from_anilist(int(direct_al.group(1))))
+            except ValueError as exc:
+                return await message.reply(f"❌ {exc}")
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("/ajouter AniList direct en échec")
+                return await message.reply(f"❌ Erreur : {exc}")
+        al_word = _AL_WORD.match(rest)
+        if al_word:
+            return await _anilist_results_reply(message, al_word.group(1).strip(), edit=False)
         direct = _DIRECT.match(rest)
         if direct:
             try:
@@ -174,7 +299,8 @@ def register(bot: Client):
             return await message.reply(f"❌ Recherche TMDB impossible : {exc}")
         results = sorted(results, key=_rank)[:MAX_RESULTS]
         if not results:
-            return await message.reply(f"Aucun résultat pour « {rest} ». Essaie le titre anglais ou japonais.")
+            await message.reply(f"Rien sur TMDB pour « {rest} » — je cherche sur AniList...")
+            return await _anilist_results_reply(message, rest, edit=False)
 
         lines, buttons = [f"Résultats pour « {rest} » — choisis :", ""], []
         for i, r in enumerate(results, start=1):
@@ -190,6 +316,7 @@ def register(bot: Client):
                 lines.append(f"   {over[:90]}{'…' if len(over) > 90 else ''}")
             buttons.append(InlineKeyboardButton(str(i), callback_data=f"add:{media}:{r['id']}"))
         rows = [buttons[i : i + 4] for i in range(0, len(buttons), 4)]
+        rows.append([InlineKeyboardButton("🔎 Chercher sur AniList", callback_data=f"add:alq:{_remember(rest)}")])
         rows.append([InlineKeyboardButton("❌ Annuler", callback_data="add:cancel")])
         await message.reply("\n".join(lines), reply_markup=InlineKeyboardMarkup(rows))
 
@@ -201,6 +328,23 @@ def register(bot: Client):
         if parts[1] == "cancel":
             await query.message.edit_text("Annulé.")
             return await query.answer()
+        if parts[1] == "alq":  # bouton « Chercher sur AniList »
+            text = _PENDING.get(parts[2])
+            if not text:
+                await query.answer("Recherche expirée : relance /ajouter.", show_alert=True)
+                return
+            await query.answer("Recherche sur AniList…")
+            return await _anilist_results_reply(query, text, edit=True)
+        if parts[1] == "al":  # un résultat AniList choisi
+            try:
+                await query.answer("Ajout en cours…")
+                text = await _create_from_anilist(int(parts[2]))
+            except ValueError as exc:
+                text = f"❌ {exc}"
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("ajout AniList en échec")
+                text = f"❌ Erreur : {exc}"
+            return await query.message.edit_text(text)
         try:
             _, media, tmdb_id = parts
             await query.answer("Ajout en cours…")

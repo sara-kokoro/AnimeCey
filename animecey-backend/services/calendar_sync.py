@@ -14,6 +14,9 @@ Ce que fait ce module :
      l'épisode est vu comme publié (bouton « Vérifier »), pour ne pas remplir la liste
      des messages épinglés.
 
+Source par défaut : AniList (CALENDAR_SOURCE=anilist) — voir sync_anilist() plus bas. L'ancienne
+lecture de FRAnime reste disponible avec CALENDAR_SOURCE=franime.
+
 Les heures affichées par FRAnime sont en heure française : on les convertit en UTC
 (Lomé/Togo = UTC+0). Le passage heure d'été/hiver est géré tout seul.
 
@@ -48,13 +51,16 @@ from sqlalchemy import delete, select
 from config import settings
 from database import async_session
 from models import Anime, Episode, LanguageEnum
-from models_calendar import CalendarEntry
+from models_calendar import CalendarEntry, CalendarVfSlot
 from models_catalog import EpisodeServer
-from services import search_fuzzy
+from services import anilist, search_fuzzy
 
 logger = logging.getLogger(__name__)
 
 ENABLED = os.getenv("CALENDAR_SYNC_ENABLED", "true").lower() in ("true", "1", "yes")
+# « anilist » (défaut) : sorties VO lues sur AniList, en VOSTFR ; la VF s'ajoute avec /vf.
+# « franime » : ancienne lecture de la page franime.fr/calendrier.
+SOURCE = os.getenv("CALENDAR_SOURCE", "anilist").lower()
 SOURCE_URL = os.getenv("CALENDAR_SOURCE_URL", "https://franime.fr/calendrier")
 SOURCE_TZ = os.getenv("CALENDAR_SOURCE_TZ", "Europe/Paris")
 SYNC_INTERVAL_MIN = max(5, int(os.getenv("CALENDAR_SYNC_INTERVAL_MIN", "30")))
@@ -305,6 +311,13 @@ def state_text(status: dict) -> str:
 
 
 async def sync_calendar() -> dict:
+    """Met le calendrier à jour depuis la source choisie (CALENDAR_SOURCE)."""
+    if SOURCE == "franime":
+        return await _sync_franime()
+    return await sync_anilist()
+
+
+async def _sync_franime() -> dict:
     """Lit la page FRAnime et met la base à jour. Ne supprime rien en cas de panne."""
     async with _sync_lock:
         try:
@@ -358,6 +371,200 @@ async def sync_calendar() -> dict:
             )
             await db.commit()
         return {"ok": True, "total": len(parsed), "new": created, "updated": updated, "linked": linked}
+
+
+# ── Source AniList (VO en VOSTFR + créneaux VF) ───────────────────────
+
+_SEASON_RES = (
+    re.compile(r"(?:season|saison)\s*(\d+)", re.I),
+    re.compile(r"(\d+)(?:st|nd|rd|th)\s+season", re.I),
+    re.compile(r"\bS(\d+)\b"),
+)
+_SEASON_STRIP = re.compile(
+    r"\s*[:\-–]?\s*(?:(?:season|saison)\s*\d+|\d+(?:st|nd|rd|th)\s+season|\bS\d+\b)\s*(?:part\s*\d+)?\s*$", re.I
+)
+
+
+def _anilist_season(titles: list[str]) -> str:
+    """« Frieren Season 2 » -> « 2 » (1 si aucun numéro de saison dans les noms)."""
+    for name in titles:
+        for rx in _SEASON_RES:
+            m = rx.search(name)
+            if m and 1 <= int(m.group(1)) <= 30:
+                return str(int(m.group(1)))
+    return "1"
+
+
+def _without_season(name: str) -> str:
+    return _SEASON_STRIP.sub("", name).strip()
+
+
+def _vf_time(vo_at: datetime, hour: int, minute: int) -> datetime:
+    """Même jour que la VO (jour UTC), à l'heure VF (UTC)."""
+    d = vo_at.astimezone(timezone.utc)
+    return datetime(d.year, d.month, d.day, hour, minute, tzinfo=timezone.utc)
+
+
+async def _match_anilist_anime(db, anilist_id: int, titles: list[str]) -> int | None:
+    row = (await db.execute(select(Anime.id).where(Anime.anilist_id == anilist_id))).first()
+    if row:
+        return row[0]
+    seen: set[str] = set()
+    for name in [*titles[:3], *(_without_season(t) for t in titles[:3])]:
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        sure = (await find_anime(db, name))[0]
+        if sure:
+            return sure
+    return None
+
+
+async def ensure_vf_entries(db, anilist_id: int, hour: int, minute: int, existing: dict | None = None) -> int:
+    """Crée / déplace les sorties VF d'un animé d'après ses sorties VO déjà connues. Renvoie le nombre touché."""
+    key_id = -anilist_id
+    since = datetime.now(timezone.utc) - timedelta(days=2)
+    vos = (
+        await db.execute(
+            select(CalendarEntry).where(
+                CalendarEntry.franime_id == key_id,
+                CalendarEntry.language == "VOSTFR",
+                CalendarEntry.release_at >= since,
+            )
+        )
+    ).scalars().all()
+    if existing is None:
+        existing = {
+            (e.season_raw, e.episode_number): e
+            for e in (
+                await db.execute(
+                    select(CalendarEntry).where(
+                        CalendarEntry.franime_id == key_id,
+                        CalendarEntry.language == "VF",
+                        CalendarEntry.release_at >= since - timedelta(days=1),
+                    )
+                )
+            ).scalars()
+        }
+    touched = 0
+    for vo in vos:
+        when = _vf_time(vo.release_at, hour, minute)
+        vf = existing.get((vo.season_raw, vo.episode_number))
+        if vf is None:
+            db.add(
+                CalendarEntry(
+                    franime_id=key_id, slug=vo.slug, title=vo.title, season_raw=vo.season_raw,
+                    episode_number=vo.episode_number, language="VF", release_at=when, anime_id=vo.anime_id,
+                )
+            )
+            touched += 1
+        elif vf.release_at != when and vf.notified_at is None:
+            vf.release_at = when
+            touched += 1
+    return touched
+
+
+async def set_vf_slot(anilist_id: int, hour: int, minute: int) -> int:
+    """Enregistre l'heure VF d'un animé et met le calendrier à jour tout de suite."""
+    async with async_session() as db:
+        slot = await db.get(CalendarVfSlot, anilist_id)
+        if slot is None:
+            db.add(CalendarVfSlot(anilist_id=anilist_id, hour=hour, minute=minute))
+        else:
+            slot.hour, slot.minute = hour, minute
+        await db.flush()
+        n = await ensure_vf_entries(db, anilist_id, hour, minute)
+        await db.commit()
+        return n
+
+
+async def remove_vf_slot(anilist_id: int) -> int:
+    """Supprime l'heure VF : les sorties VF à venir (non encore alertées) disparaissent du calendrier."""
+    async with async_session() as db:
+        slot = await db.get(CalendarVfSlot, anilist_id)
+        if slot is not None:
+            await db.delete(slot)
+        res = await db.execute(
+            delete(CalendarEntry).where(
+                CalendarEntry.franime_id == -anilist_id,
+                CalendarEntry.language == "VF",
+                CalendarEntry.notified_at.is_(None),
+                CalendarEntry.release_at > datetime.now(timezone.utc),
+            )
+        )
+        await db.commit()
+        return res.rowcount or 0
+
+
+async def sync_anilist() -> dict:
+    """Lit les sorties de la semaine sur AniList (VO, en UTC) et met la base à jour."""
+    async with _sync_lock:
+        now = datetime.now(timezone.utc)
+        try:
+            airings = await anilist.airing_schedule(now - timedelta(days=2), now + timedelta(days=9))
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": f"AniList injoignable : {exc}"}
+        if not airings:
+            return {"ok": False, "error": "AniList n'a renvoyé aucune sortie"}
+
+        created = updated = linked = 0
+        async with async_session() as db:
+            slots = {s.anilist_id: (s.hour, s.minute) for s in (await db.execute(select(CalendarVfSlot))).scalars()}
+            lo = min(a["airing_at"] for a in airings) - timedelta(days=2)
+            existing = {
+                (e.franime_id, e.season_raw, e.episode_number, e.language): e
+                for e in (
+                    await db.execute(
+                        select(CalendarEntry).where(CalendarEntry.franime_id < 0, CalendarEntry.release_at >= lo)
+                    )
+                ).scalars()
+            }
+            matches: dict[int, int | None] = {}
+
+            def upsert(fid, season, ep, lang, title, at, anime_id):
+                nonlocal created, updated, linked
+                entry = existing.get((fid, season, ep, lang))
+                if entry is None:
+                    entry = CalendarEntry(
+                        franime_id=fid, slug="", title=title[:500], season_raw=season, episode_number=ep,
+                        language=lang, release_at=at, anime_id=anime_id,
+                    )
+                    db.add(entry)
+                    existing[(fid, season, ep, lang)] = entry
+                    created += 1
+                    return
+                changed = False
+                if entry.notified_at is None and entry.release_at != at:
+                    entry.release_at = at
+                    changed = True
+                if entry.title != title[:500]:
+                    entry.title = title[:500]
+                    changed = True
+                if entry.anime_id is None and anime_id:
+                    entry.anime_id = anime_id
+                    linked += 1
+                    changed = True
+                updated += int(changed)
+
+            for a in airings:
+                al_id = a["anilist_id"]
+                if al_id not in matches:
+                    matches[al_id] = await _match_anilist_anime(db, al_id, a["titles"])
+                anime_id = matches[al_id]
+                season = _anilist_season(a["titles"])
+                fid = -al_id
+                upsert(fid, season, a["episode"], "VOSTFR", a["title"], a["airing_at"], anime_id)
+                if al_id in slots:
+                    h, m = slots[al_id]
+                    upsert(fid, season, a["episode"], "VF", a["title"], _vf_time(a["airing_at"], h, m), anime_id)
+
+            await db.execute(
+                delete(CalendarEntry).where(
+                    CalendarEntry.release_at < datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)
+                )
+            )
+            await db.commit()
+        return {"ok": True, "total": len(airings), "new": created, "updated": updated, "linked": linked}
 
 
 # ── Alertes aux admins ─────────────────────────────────────────────────
@@ -466,6 +673,9 @@ async def notify_due() -> int:
                 entry.notified_at = now  # découverte trop tard (ex. serveur éteint) : on ne spamme pas
                 continue
             if bot is None:
+                continue
+            if entry.franime_id < 0 and entry.anime_id is None:
+                entry.notified_at = now  # source AniList : on n'alerte que pour les animés du catalogue
                 continue
             pins = await _send_alert(bot, entry, await build_alert(db, entry))
             if pins:

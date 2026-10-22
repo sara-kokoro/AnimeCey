@@ -9,7 +9,8 @@ import { Badge2 } from "@/components/ui/Badge2";
 import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { AnimeGrid } from "@/components/anime/AnimeGrid";
-import { fetchAnime, fetchAnimes } from "@/api/animes";
+import { fetchAnime, fetchSimilar } from "@/api/animes";
+import { AnimeCredits } from "@/components/anime/AnimeCredits";
 import { fetchEpisodes } from "@/api/episodes";
 import { ensureSeason, fetchSeasonLabels } from "@/api/catalog";
 import { addFavorite, fetchFavorites, removeFavorite } from "@/api/users";
@@ -85,15 +86,16 @@ export default function AnimeDetail() {
   }, [anime, loadingEps, episodes.length, seasonLabels.length, lang, season, id, preparing]);
 
   const [tab, setTab] = useState<"overview" | "episodes" | "related">("overview");
-  const relatedGenre = anime?.genres?.[0];
+  // Animés / séries similaires : recommandations AniList (animés) ou TMDB (films et séries),
+  // complétées par les titres de même genre du site.
   const { data: related } = useQuery({
-    queryKey: ["related", relatedGenre, anime?.type],
-    queryFn: () => fetchAnimes({ genre: relatedGenre, limit: 13, sort: "score" }),
-    enabled: !!relatedGenre,
-    staleTime: 5 * 60_000,
+    queryKey: ["similar", Number(id)],
+    queryFn: () => fetchSimilar(Number(id)),
+    enabled: !!anime,
+    staleTime: 10 * 60_000,
   });
-  const relatedList = (related?.items ?? []).filter((a) => a.id !== anime?.id).slice(0, 12);
-
+  const relatedList = related ?? [];
+  const similarLabel = anime?.category === "live" ? "Séries et films similaires" : "Animés similaires";
 
   if (loadingAnime) {
     return (
@@ -231,7 +233,7 @@ export default function AnimeDetail() {
           <div className="flex gap-1 p-1 rounded-full bg-surface border border-border-subtle w-fit max-w-full overflow-x-auto no-scrollbar mx-auto">
             {tabBtn("overview", "Aperçu")}
             {tabBtn("episodes", "Épisodes")}
-            {tabBtn("related", "Liés")}
+            {tabBtn("related", "Similaires")}
           </div>
         </div>
 
@@ -266,6 +268,18 @@ export default function AnimeDetail() {
             </dl>
             {anime.trailer_url && <ReportButton animeId={Number(id)} className="px-5 py-2.5 rounded-full" />}
             <BannerAd />
+            <AnimeCredits animeId={Number(id)} />
+            {relatedList.length > 0 && (
+              <section>
+                <div className="flex items-baseline justify-between mb-2">
+                  <h2 className="font-display font-bold text-lg">{similarLabel}</h2>
+                  <button onClick={() => setTab("related")} className="text-xs font-semibold text-primary hover:underline">
+                    Voir tout
+                  </button>
+                </div>
+                <AnimeGrid animes={relatedList.slice(0, 6)} />
+              </section>
+            )}
           </div>
         )}
 
@@ -332,7 +346,7 @@ export default function AnimeDetail() {
         {tab === "related" && (
           <div className="mt-4">
             {relatedList.length === 0 ? (
-              <p className="text-center text-muted-foreground py-8">Aucun titre lié pour le moment.</p>
+              <p className="text-center text-muted-foreground py-8">Aucun titre similaire pour le moment.</p>
             ) : (
               <AnimeGrid animes={relatedList} />
             )}

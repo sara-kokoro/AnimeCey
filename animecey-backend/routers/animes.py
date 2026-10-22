@@ -471,3 +471,56 @@ async def get_anime(anime_id: int, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Animé introuvable")
     items = await _enrich_animes(db, [anime])
     return items[0]
+
+
+@router.get("/{anime_id}/credits")
+async def get_credits(anime_id: int, db: AsyncSession = Depends(get_db)):
+    """Personnages et équipe (AniList pour les animés) ou distribution et équipe (TMDB pour films et séries)."""
+    from fastapi import HTTPException
+
+    from services import people
+
+    anime = (await db.execute(select(Anime).where(Anime.id == anime_id))).scalar_one_or_none()
+    if not anime:
+        raise HTTPException(status_code=404, detail="Animé introuvable")
+    return await people.credits_for(db, anime)
+
+
+@router.get("/{anime_id}/similar")
+async def get_similar(anime_id: int, db: AsyncSession = Depends(get_db)):
+    """Animés (ou séries / films) similaires déjà présents sur le site.
+
+    D'abord les recommandations AniList / TMDB ; si elles ne suffisent pas, on complète avec les
+    titres de même genre et même catégorie les mieux notés.
+    """
+    from fastapi import HTTPException
+
+    from services import people
+
+    LIMIT = 12
+    anime = (await db.execute(select(Anime).where(Anime.id == anime_id))).scalar_one_or_none()
+    if not anime:
+        raise HTTPException(status_code=404, detail="Animé introuvable")
+
+    ids = await people.similar_ids(db, anime)
+    picked = list(dict.fromkeys(ids))[:LIMIT]
+    if len(picked) < LIMIT and anime.genres:
+        rows = (
+            await db.execute(
+                select(Anime)
+                .where(Anime.id != anime.id, Anime.category == anime.category)
+                .order_by(Anime.score.desc())
+                .limit(300)
+            )
+        ).scalars().all()
+        mine = {g.lower() for g in anime.genres}
+        scored = sorted(
+            (a for a in rows if a.id not in picked and mine & {g.lower() for g in (a.genres or [])}),
+            key=lambda a: (-len(mine & {g.lower() for g in a.genres}), -(a.score or 0)),
+        )
+        picked += [a.id for a in scored[: LIMIT - len(picked)]]
+    if not picked:
+        return []
+    found = {a.id: a for a in (await db.execute(select(Anime).where(Anime.id.in_(picked)))).scalars()}
+    return await _enrich_animes(db, [found[i] for i in picked if i in found])
+

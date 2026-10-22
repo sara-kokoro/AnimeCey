@@ -74,3 +74,34 @@ export async function fetchTrending(): Promise<Anime[]> {
   const res = await api.get("/animes/trending");
   return res.data;
 }
+
+export interface CreditPerson {
+  name: string;
+  /** rôle : « Principal », « Director », « Original Creator »... */
+  role: string | null;
+  image: string | null;
+  /** doubleur japonais d'un personnage (AniList) */
+  sub_name: string | null;
+  sub_image: string | null;
+}
+
+export interface CreditGroup {
+  title: string;
+  people: CreditPerson[];
+}
+
+export interface Credits {
+  /** AniList pour les animés, TMDB pour les films et séries */
+  source: "anilist" | "tmdb" | null;
+  groups: CreditGroup[];
+}
+
+export async function fetchCredits(id: number): Promise<Credits> {
+  const res = await api.get(`/animes/${id}/credits`);
+  return res.data;
+}
+
+export async function fetchSimilar(id: number): Promise<Anime[]> {
+  const res = await api.get(`/animes/${id}/similar`);
+  return res.data;
+}

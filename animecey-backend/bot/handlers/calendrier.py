@@ -3,7 +3,10 @@
   /check <n° animé>   sorties du calendrier de cet animé (3 jours passés, 8 jours à venir)
                       et état de chacune : publié, pas encore publié, autre saison...
   /check              les sorties des dernières 24 h qui ne sont pas encore publiées
-  /calsync            relit tout de suite la page FRAnime (utile pour tester)
+  /calsync            relit tout de suite le calendrier AniList (utile pour tester)
+  /vf                 animés du calendrier cette semaine, avec leur n° AniList et leur heure VF
+  /vf <n° AniList> <HH:MM>   fixe l'heure VF (UTC, Lomé) : mêmes jours que la VO, affichée « VF »
+  /vf <n° AniList> off       retire la VF de cet animé
 
 Mettre ce fichier dans bot/handlers/calendrier.py.
 """
@@ -11,6 +14,7 @@ Mettre ce fichier dans bot/handlers/calendrier.py.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from pyrogram import Client, filters
@@ -20,10 +24,21 @@ from sqlalchemy import select
 from bot.handlers.admin import is_admin
 from database import async_session
 from models import Anime
-from models_calendar import CalendarEntry
+from models_calendar import CalendarEntry, CalendarVfSlot
 from services import calendar_sync as cal
 
 logger = logging.getLogger(__name__)
+
+
+_TIME = re.compile(r"^(\d{1,2})\s*[:hH]\s*(\d{2})?$")
+
+
+def _parse_time(text: str) -> tuple[int, int] | None:
+    m = _TIME.match(text.strip())
+    if not m:
+        return None
+    hour, minute = int(m.group(1)), int(m.group(2) or 0)
+    return (hour, minute) if 0 <= hour < 24 and 0 <= minute < 60 else None
 
 
 def _when(entry: CalendarEntry) -> str:
@@ -114,7 +129,7 @@ def register(bot: Client):
     async def cmd_calsync(client: Client, message: Message):
         if not message.from_user or not is_admin(message.from_user.id):
             return
-        wait = await message.reply("⏳ Lecture du calendrier FRAnime...")
+        wait = await message.reply("⏳ Lecture du calendrier...")
         try:
             res = await cal.sync_calendar()
         except Exception as exc:  # noqa: BLE001
@@ -151,3 +166,82 @@ def register(bot: Client):
         except Exception as exc:  # noqa: BLE001
             logger.exception("Bouton de vérification en échec")
             await query.answer(f"Erreur : {exc}"[:190], show_alert=True)
+
+    @bot.on_message(filters.private & filters.command("vf"))
+    async def cmd_vf(client: Client, message: Message):
+        if not message.from_user or not is_admin(message.from_user.id):
+            return
+        args = message.command[1:]
+        try:
+            if not args:
+                return await _vf_list(message)
+            if not args[0].isdigit() or len(args) < 2:
+                return await message.reply(
+                    "Usage :\n/vf — liste des animés de la semaine\n"
+                    "/vf <n° AniList> <HH:MM> — ex. /vf 154587 18:30 (heure UTC, Lomé)\n"
+                    "/vf <n° AniList> off — retirer la VF"
+                )
+            al_id = int(args[0])
+            if args[1].lower() in ("off", "non", "stop", "supprimer"):
+                n = await cal.remove_vf_slot(al_id)
+                return await message.reply(f"🗑 VF retirée pour le n° AniList {al_id} ({n} sortie(s) VF à venir supprimée(s)).")
+            parsed = _parse_time(" ".join(args[1:]))
+            if parsed is None:
+                return await message.reply("❌ Heure invalide. Exemple : /vf 154587 18:30")
+            async with async_session() as db:
+                known = (
+                    await db.execute(
+                        select(CalendarEntry.title)
+                        .where(CalendarEntry.franime_id == -al_id)
+                        .order_by(CalendarEntry.release_at.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+            if known is None:
+                return await message.reply(
+                    f"❌ Le n° AniList {al_id} n'est pas dans le calendrier de cette semaine. "
+                    "Tape /vf pour voir la liste et copier le bon numéro."
+                )
+            n = await cal.set_vf_slot(al_id, *parsed)
+            await message.reply(
+                f"✅ {known} : VF fixée à {parsed[0]:02d}:{parsed[1]:02d} UTC (Lomé), mêmes jours que la VO. "
+                f"{n} sortie(s) VF créée(s) ou déplacée(s) — visibles tout de suite sur le calendrier du site."
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("/vf en échec")
+            await message.reply(f"❌ Erreur : {exc}")
+
+
+async def _vf_list(message: Message) -> None:
+    now = datetime.now(timezone.utc)
+    async with async_session() as db:
+        entries = (
+            await db.execute(
+                select(CalendarEntry)
+                .where(
+                    CalendarEntry.franime_id < 0,
+                    CalendarEntry.language == "VOSTFR",
+                    CalendarEntry.release_at >= now - timedelta(hours=12),
+                    CalendarEntry.release_at <= now + timedelta(days=7),
+                )
+                .order_by(CalendarEntry.release_at)
+            )
+        ).scalars().all()
+        slots = {s.anilist_id: s for s in (await db.execute(select(CalendarVfSlot))).scalars()}
+    if not entries:
+        return await message.reply("Aucune sortie AniList en base pour le moment. Essaie /calsync.")
+    seen: set[int] = set()
+    lines = ["📅 Animés du calendrier (7 jours) — /vf <n°> <HH:MM> pour fixer la VF", ""]
+    for e in entries:
+        al_id = -e.franime_id
+        if al_id in seen:
+            continue
+        seen.add(al_id)
+        slot = slots.get(al_id)
+        vf = f" · VF {slot.hour:02d}:{slot.minute:02d}" if slot else ""
+        site = f" · site n°{e.anime_id}" if e.anime_id else ""
+        lines.append(f"• {al_id} — {e.title} · Ép. {e.episode_number} · {_when(e)}{vf}{site}")
+    text = "\n".join(lines)
+    for i in range(0, len(text), 3900):
+        await message.reply(text[i : i + 3900])
+

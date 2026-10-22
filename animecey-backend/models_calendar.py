@@ -14,6 +14,23 @@ from sqlalchemy.orm import Mapped, mapped_column
 from database import Base
 
 
+class CalendarVfSlot(Base):
+    """Heure de sortie VF d'un animé du calendrier AniList (réglée avec /vf dans le bot).
+
+    Les jours sont ceux de la VO (AniList) ; seule l'heure change. Heure en UTC (Lomé/Togo = UTC+0).
+    Table créée toute seule au démarrage par create_all().
+    """
+
+    __tablename__ = "calendar_vf_slots"
+
+    anilist_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    hour: Mapped[int] = mapped_column(Integer, nullable=False)
+    minute: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class CalendarEntry(Base):
     __tablename__ = "calendar_entries"
     __table_args__ = (
@@ -24,7 +41,9 @@ class CalendarEntry(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    # identifiant de l'animé chez FRAnime (paramètre anime_id du lien)
+    # identifiant de l'animé chez la source : n° FRAnime (positif, ancienne source) ou
+    # -n° AniList (négatif, nouvelle source) — le signe évite toute collision entre les deux
+    # et ne demande aucune migration.
     franime_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     slug: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     title: Mapped[str] = mapped_column(String(500), nullable=False)

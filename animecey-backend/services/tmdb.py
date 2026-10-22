@@ -111,3 +111,55 @@ async def get_season(tmdb_id: int, season_number: int, db: AsyncSession, languag
         data = resp.json()
     await _set_cache(db, cache_key, data)
     return data
+
+
+async def get_credits(tmdb_id: int, media_type: str, db: AsyncSession, language: str = "fr-FR") -> dict:
+    """{"cast": [{name, role, image}], "crew": [{name, role, image}]} d'un film ou d'une série."""
+    cache_key = f"tmdb:credits:{media_type}:{tmdb_id}:{language}"
+    cached = await _get_cache(db, cache_key, CACHE_DETAILS_TTL)
+    if cached is not None:
+        return cached
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{settings.TMDB_BASE_URL}/{media_type}/{tmdb_id}/credits",
+            params={"api_key": settings.TMDB_API_KEY, "language": language},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    def img(path: str | None) -> str | None:
+        return f"https://image.tmdb.org/t/p/w185{path}" if path else None
+
+    cast = [
+        {"name": c["name"], "role": c.get("character") or None, "image": img(c.get("profile_path"))}
+        for c in (data.get("cast") or [])[:14]
+        if c.get("name")
+    ]
+    wanted = ("Director", "Creator", "Writer", "Screenplay", "Producer", "Executive Producer", "Original Music Composer")
+    crew, seen = [], set()
+    for c in data.get("crew") or []:
+        if c.get("job") in wanted and c.get("name") and (c["name"], c["job"]) not in seen:
+            seen.add((c["name"], c["job"]))
+            crew.append({"name": c["name"], "role": c["job"], "image": img(c.get("profile_path"))})
+    crew.sort(key=lambda c: wanted.index(c["role"]))
+    result = {"cast": cast, "crew": crew[:10]}
+    if cast or crew:
+        await _set_cache(db, cache_key, result)
+    return result
+
+
+async def get_similar(tmdb_id: int, media_type: str, db: AsyncSession, language: str = "fr-FR") -> list[dict]:
+    """Titres que TMDB recommande pour celui-ci (liste brute de résultats TMDB)."""
+    cache_key = f"tmdb:similar:{media_type}:{tmdb_id}:{language}"
+    cached = await _get_cache(db, cache_key, CACHE_DETAILS_TTL)
+    if cached is not None:
+        return cached
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{settings.TMDB_BASE_URL}/{media_type}/{tmdb_id}/recommendations",
+            params={"api_key": settings.TMDB_API_KEY, "language": language},
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results") or []
+    await _set_cache(db, cache_key, results)
+    return results
