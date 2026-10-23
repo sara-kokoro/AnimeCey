@@ -3,7 +3,7 @@
   /check <n° animé>   sorties du calendrier de cet animé (3 jours passés, 8 jours à venir)
                       et état de chacune : publié, pas encore publié, autre saison...
   /check              les sorties des dernières 24 h qui ne sont pas encore publiées
-  /calsync            relit tout de suite le calendrier AniList (utile pour tester)
+  /calsync            relit tout de suite le calendrier (utile pour tester ; consomme des crédits ZenRows)
   /vf                 animés du calendrier cette semaine, avec leur n° AniList et leur heure VF
   /vf <n° AniList> <HH:MM>   fixe l'heure VF (UTC, Lomé) : mêmes jours que la VO, affichée « VF »
   /vf <n° AniList> off       retire la VF de cet animé
@@ -129,16 +129,18 @@ def register(bot: Client):
     async def cmd_calsync(client: Client, message: Message):
         if not message.from_user or not is_admin(message.from_user.id):
             return
-        wait = await message.reply("⏳ Lecture du calendrier...")
+        wait = await message.reply("⏳ Lecture du calendrier (consomme des crédits ZenRows)...")
         try:
             res = await cal.sync_calendar()
         except Exception as exc:  # noqa: BLE001
             logger.exception("/calsync en échec")
             return await wait.edit_text(f"❌ Erreur : {exc}")
         if res.get("ok"):
+            nxt = await cal.next_sync_at()
             await wait.edit_text(
                 f"✅ {res['total']} sorties lues · {res['new']} nouvelles · "
-                f"{res['updated']} mises à jour · {res['linked']} reliées à un animé du site."
+                f"{res['updated']} mises à jour · {res['linked']} reliées à un animé du site.\n"
+                f"Prochaine lecture automatique : {nxt:%d/%m à %H:%M} UTC."
             )
         else:
             extra = ""

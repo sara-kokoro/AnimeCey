@@ -14,6 +14,19 @@ from sqlalchemy.orm import Mapped, mapped_column
 from database import Base
 
 
+class CalendarState(Base):
+    """Petite mémoire du calendrier (ex. date de la dernière lecture réussie de FRAnime).
+
+    Gardée en base pour survivre aux redémarrages : sans ça, chaque redéploiement relirait la page
+    (et consommerait des crédits ZenRows). Table créée par create_all().
+    """
+
+    __tablename__ = "calendar_state"
+
+    key: Mapped[str] = mapped_column(String(50), primary_key=True)
+    value: Mapped[str] = mapped_column(String(100), nullable=False)
+
+
 class CalendarVfSlot(Base):
     """Heure de sortie VF d'un animé du calendrier AniList (réglée avec /vf dans le bot).
 

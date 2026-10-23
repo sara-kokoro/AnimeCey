@@ -38,7 +38,12 @@ async def get_calendar(week: int = Query(0, ge=-4, le=4), db: AsyncSession = Dep
     entries = (
         await db.execute(
             select(CalendarEntry)
-            .where(CalendarEntry.release_at >= start, CalendarEntry.release_at < end)
+            .where(
+                CalendarEntry.release_at >= start,
+                CalendarEntry.release_at < end,
+                # une seule source à l'écran : FRAnime = n° positifs, AniList = n° négatifs
+                CalendarEntry.franime_id > 0 if calendar_sync.SOURCE == "franime" else CalendarEntry.franime_id < 0,
+            )
             .order_by(CalendarEntry.release_at, CalendarEntry.title)
         )
     ).scalars().all()

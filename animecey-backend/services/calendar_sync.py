@@ -1,7 +1,8 @@
 """Calendrier des sorties : copie de franime.fr/calendrier + alertes aux admins.
 
 Ce que fait ce module :
-  1. toutes les CALENDAR_SYNC_INTERVAL_MIN minutes (30 par défaut), télécharge la page
+  1. une fois par semaine (CALENDAR_SYNC_INTERVAL_MIN, 10080 min par défaut pour FRAnime ; la date de
+     la dernière lecture est gardée en base, un redémarrage ne relance rien), télécharge la page
      https://franime.fr/calendrier, lit les sorties de la semaine et les enregistre dans
      la table calendar_entries (heure convertie en UTC) ;
   2. relie chaque sortie à un animé du site quand le titre correspond exactement
@@ -22,7 +23,9 @@ Les heures affichées par FRAnime sont en heure française : on les convertit en
 
 Variables d'environnement (toutes optionnelles) :
   CALENDAR_SYNC_ENABLED       true / false                        (défaut : true)
-  CALENDAR_SYNC_INTERVAL_MIN  minutes entre 2 lectures de la page (défaut : 30)
+  CALENDAR_SYNC_INTERVAL_MIN  minutes entre 2 lectures de la page (défaut : 10080 = 1 semaine pour
+                              FRAnime, 30 pour AniList)
+  CALENDAR_RETRY_MIN          minutes avant de réessayer après un échec (défaut : 360 = 6 h)
   CALENDAR_NOTIFY_DELAY_MIN   minutes après la sortie             (défaut : 30)
   CALENDAR_NOTIFY_MAX_AGE_H   au-delà, une sortie découverte trop tard est ignorée
                               sans message (défaut : 12)
@@ -57,7 +60,7 @@ from sqlalchemy import delete, select
 from config import settings
 from database import async_session
 from models import Anime, Episode, LanguageEnum
-from models_calendar import CalendarEntry, CalendarVfSlot
+from models_calendar import CalendarEntry, CalendarState, CalendarVfSlot
 from models_catalog import EpisodeServer
 from services import anilist, search_fuzzy
 
@@ -74,12 +77,12 @@ ZENROWS_PARAMS = (
 ).strip()
 SOURCE_URL = os.getenv("CALENDAR_SOURCE_URL", "https://franime.fr/calendrier")
 SOURCE_TZ = os.getenv("CALENDAR_SOURCE_TZ", "Europe/Paris")
-SYNC_INTERVAL_MIN = max(5, int(os.getenv("CALENDAR_SYNC_INTERVAL_MIN", "30")))
+SYNC_INTERVAL_MIN = max(5, int(os.getenv("CALENDAR_SYNC_INTERVAL_MIN") or (10080 if SOURCE == "franime" else 30)))
+RETRY_MIN = max(5, int(os.getenv("CALENDAR_RETRY_MIN", "360")))
 NOTIFY_DELAY_MIN = max(0, int(os.getenv("CALENDAR_NOTIFY_DELAY_MIN", "30")))
 NOTIFY_MAX_AGE_H = max(1, int(os.getenv("CALENDAR_NOTIFY_MAX_AGE_H", "12")))
 UNPIN_AFTER_H = max(1, int(os.getenv("CALENDAR_UNPIN_AFTER_H", "24")))
 KEEP_DAYS = 21
-RETRY_SEC = 300
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -333,9 +336,54 @@ def state_text(status: dict) -> str:
 
 async def sync_calendar() -> dict:
     """Met le calendrier à jour depuis la source choisie (CALENDAR_SOURCE)."""
-    if SOURCE == "franime":
-        return await _sync_franime()
-    return await sync_anilist()
+    await _purge_other_source()
+    result = await (_sync_franime() if SOURCE == "franime" else sync_anilist())
+    await _set_state("last_ok" if result.get("ok") else "last_fail", datetime.now(timezone.utc).isoformat())
+    return result
+
+
+async def _get_state(key: str) -> datetime | None:
+    async with async_session() as db:
+        row = await db.get(CalendarState, key)
+    if row is None:
+        return None
+    try:
+        return datetime.fromisoformat(row.value)
+    except ValueError:
+        return None
+
+
+async def _set_state(key: str, value: str) -> None:
+    async with async_session() as db:
+        row = await db.get(CalendarState, key)
+        if row is None:
+            db.add(CalendarState(key=key, value=value))
+        else:
+            row.value = value
+        await db.commit()
+
+
+async def next_sync_at() -> datetime:
+    """Prochaine lecture automatique : 1 intervalle après la dernière réussite ; après un échec,
+    on attend RETRY_MIN (jamais toutes les minutes : chaque lecture coûte des crédits)."""
+    now = datetime.now(timezone.utc)
+    last_ok, last_fail = await _get_state("last_ok"), await _get_state("last_fail")
+    due = (last_ok + timedelta(minutes=SYNC_INTERVAL_MIN)) if last_ok else now
+    if last_fail and (last_ok is None or last_fail > last_ok):
+        due = max(due, last_fail + timedelta(minutes=RETRY_MIN)) if last_ok else last_fail + timedelta(minutes=RETRY_MIN)
+    return due
+
+
+async def _purge_other_source() -> None:
+    """Supprime les sorties de l'autre source (FRAnime = n° > 0, AniList = n° < 0).
+
+    Sans ça, après un changement de CALENDAR_SOURCE, les anciennes lignes resteraient affichées
+    (et déclencheraient encore des alertes) tant que la nouvelle source n'a pas répondu.
+    """
+    async with async_session() as db:
+        other = CalendarEntry.franime_id < 0 if SOURCE == "franime" else CalendarEntry.franime_id > 0
+        await db.execute(delete(CalendarEntry).where(other))
+        await db.commit()
 
 
 async def _sync_franime() -> dict:
@@ -732,20 +780,17 @@ async def cleanup_pins() -> None:
 
 async def _loop() -> None:
     await asyncio.sleep(30)  # laisse l'API et le bot finir de démarrer
-    next_sync = 0.0
     while True:
         try:
-            if time.monotonic() >= next_sync:
-                result = await sync_calendar()
+            if datetime.now(timezone.utc) >= await next_sync_at():
+                result = await sync_calendar()  # enregistre lui-même la date de réussite / d'échec
                 if result.get("ok"):
                     logger.info(
                         "Calendrier: %s sorties lues, %s nouvelles, %s mises à jour.",
                         result["total"], result["new"], result["updated"],
                     )
-                    next_sync = time.monotonic() + SYNC_INTERVAL_MIN * 60
                 else:
-                    logger.warning("Calendrier: %s. Nouvel essai dans 5 min.", result.get("error"))
-                    next_sync = time.monotonic() + RETRY_SEC
+                    logger.warning("Calendrier: %s. Nouvel essai dans %s min.", result.get("error"), RETRY_MIN)
             sent = await notify_due()
             if sent:
                 logger.info("Calendrier: %s alerte(s) envoyée(s) aux admins.", sent)
