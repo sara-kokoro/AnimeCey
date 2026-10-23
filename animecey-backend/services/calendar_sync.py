@@ -29,6 +29,10 @@ Variables d'environnement (toutes optionnelles) :
   CALENDAR_UNPIN_AFTER_H      heures avant de désépingler          (défaut : 24)
   CALENDAR_SOURCE_URL         page à lire (défaut : https://franime.fr/calendrier)
   CALENDAR_SOURCE             franime (défaut) / anilist
+  ZENROWS_API_KEY             si défini, la page FRAnime est lue via l'API ZenRows (prioritaire sur le proxy)
+  CALENDAR_ZENROWS_PARAMS     options ZenRows au format URL (sinon ZENROWS_PARAMS, sinon
+                              premium_proxy=true&proxy_country=fr). Ajoute &js_render=true si la
+                              page revient vide.
   CALENDAR_PROXY_URL          proxy HTTP pour lire FRAnime (sinon FIXIE_URL, fourni par Fixie)
   CALENDAR_SOURCE_TZ          fuseau des heures de la page          (défaut : Europe/Paris)
 
@@ -64,6 +68,10 @@ ENABLED = os.getenv("CALENDAR_SYNC_ENABLED", "true").lower() in ("true", "1", "y
 # « anilist » : sorties VO lues sur AniList, en VOSTFR ; la VF s'ajoute avec /vf.
 SOURCE = os.getenv("CALENDAR_SOURCE", "franime").lower()
 PROXY_URL = os.getenv("CALENDAR_PROXY_URL") or os.getenv("FIXIE_URL") or None
+ZENROWS_KEY = os.getenv("ZENROWS_API_KEY", "").strip()
+ZENROWS_PARAMS = (
+    os.getenv("CALENDAR_ZENROWS_PARAMS") or os.getenv("ZENROWS_PARAMS") or "premium_proxy=true&proxy_country=fr"
+).strip()
 SOURCE_URL = os.getenv("CALENDAR_SOURCE_URL", "https://franime.fr/calendrier")
 SOURCE_TZ = os.getenv("CALENDAR_SOURCE_TZ", "Europe/Paris")
 SYNC_INTERVAL_MIN = max(5, int(os.getenv("CALENDAR_SYNC_INTERVAL_MIN", "30")))
@@ -211,6 +219,16 @@ async def _download() -> str:
         "Accept": "text/html,application/xhtml+xml",
         "Accept-Language": "fr-FR,fr;q=0.9",
     }
+    if ZENROWS_KEY:  # API ZenRows : elle va chercher la page à notre place (consomme des crédits)
+        from urllib.parse import parse_qsl
+
+        params = {"apikey": ZENROWS_KEY, "url": SOURCE_URL}
+        params.update(dict(parse_qsl(ZENROWS_PARAMS)))
+        async with httpx.AsyncClient(follow_redirects=True, timeout=90.0) as client:
+            resp = await client.get("https://api.zenrows.com/v1/", params=params)
+        if resp.status_code != 200:
+            raise RuntimeError(f"ZenRows HTTP {resp.status_code} : {resp.text[:200]}")
+        return resp.text
     async with httpx.AsyncClient(follow_redirects=True, timeout=30.0, headers=headers, proxy=PROXY_URL) as client:
         resp = await client.get(SOURCE_URL)
     if resp.status_code != 200:
