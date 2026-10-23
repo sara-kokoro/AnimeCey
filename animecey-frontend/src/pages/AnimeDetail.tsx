@@ -11,6 +11,7 @@ import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { AnimeGrid } from "@/components/anime/AnimeGrid";
 import { fetchAnime, fetchSimilar } from "@/api/animes";
 import { AnimeCredits } from "@/components/anime/AnimeCredits";
+import { Seo } from "@/components/Seo";
 import { fetchEpisodes } from "@/api/episodes";
 import { ensureSeason, fetchSeasonLabels } from "@/api/catalog";
 import { addFavorite, fetchFavorites, removeFavorite } from "@/api/users";
@@ -107,6 +108,24 @@ export default function AnimeDetail() {
 
   if (!anime) return <Navigate to="/" replace />;
 
+  const isFilm = anime.type === "film";
+  const synopsisShort = (anime.synopsis || "").replace(/\s+/g, " ").trim();
+  const seoDescription =
+    (synopsisShort.length > 150 ? `${synopsisShort.slice(0, 150).replace(/\s+\S*$/, "")}…` : synopsisShort) ||
+    `Regarde ${anime.title} en streaming.`;
+  const seoLd = {
+    "@context": "https://schema.org",
+    "@type": isFilm ? "Movie" : "TVSeries",
+    name: anime.title,
+    ...(anime.title_jp ? { alternateName: anime.title_jp } : {}),
+    description: anime.synopsis || undefined,
+    image: anime.poster_url || undefined,
+    genre: anime.genres,
+    ...(anime.year ? { datePublished: String(anime.year) } : {}),
+    url: `https://www.magi-stream.online/anime/${anime.id}`,
+  };
+
+
   const sorted = reverse ? [...episodes].reverse() : episodes;
 
   const statusLabel =
@@ -136,6 +155,14 @@ export default function AnimeDetail() {
       transition={{ duration: 0.35 }}
       className="min-h-screen bg-background"
     >
+      <Seo
+        title={`${anime.title} en streaming VF et VOSTFR | Magi-Stream`}
+        description={seoDescription}
+        path={`/anime/${anime.id}`}
+        image={anime.poster_url || undefined}
+        type={isFilm ? "video.movie" : "video.tv_show"}
+        jsonLd={seoLd}
+      />
       <Navbar />
 
       <section className="relative overflow-hidden">

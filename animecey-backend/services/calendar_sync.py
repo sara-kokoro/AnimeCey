@@ -14,8 +14,8 @@ Ce que fait ce module :
      l'épisode est vu comme publié (bouton « Vérifier »), pour ne pas remplir la liste
      des messages épinglés.
 
-Source par défaut : AniList (CALENDAR_SOURCE=anilist) — voir sync_anilist() plus bas. L'ancienne
-lecture de FRAnime reste disponible avec CALENDAR_SOURCE=franime.
+Source par défaut : FRAnime (CALENDAR_SOURCE=franime), avec un proxy sortant si FIXIE_URL est
+défini. La lecture AniList (CALENDAR_SOURCE=anilist + commande /vf) reste dans le code, au repos.
 
 Les heures affichées par FRAnime sont en heure française : on les convertit en UTC
 (Lomé/Togo = UTC+0). Le passage heure d'été/hiver est géré tout seul.
@@ -28,6 +28,8 @@ Variables d'environnement (toutes optionnelles) :
                               sans message (défaut : 12)
   CALENDAR_UNPIN_AFTER_H      heures avant de désépingler          (défaut : 24)
   CALENDAR_SOURCE_URL         page à lire (défaut : https://franime.fr/calendrier)
+  CALENDAR_SOURCE             franime (défaut) / anilist
+  CALENDAR_PROXY_URL          proxy HTTP pour lire FRAnime (sinon FIXIE_URL, fourni par Fixie)
   CALENDAR_SOURCE_TZ          fuseau des heures de la page          (défaut : Europe/Paris)
 
 Mettre ce fichier dans services/calendar_sync.py.
@@ -58,9 +60,10 @@ from services import anilist, search_fuzzy
 logger = logging.getLogger(__name__)
 
 ENABLED = os.getenv("CALENDAR_SYNC_ENABLED", "true").lower() in ("true", "1", "yes")
-# « anilist » (défaut) : sorties VO lues sur AniList, en VOSTFR ; la VF s'ajoute avec /vf.
-# « franime » : ancienne lecture de la page franime.fr/calendrier.
-SOURCE = os.getenv("CALENDAR_SOURCE", "anilist").lower()
+# « franime » (défaut) : lecture de la page franime.fr/calendrier (VF et VOSTFR comme sur FRAnime).
+# « anilist » : sorties VO lues sur AniList, en VOSTFR ; la VF s'ajoute avec /vf.
+SOURCE = os.getenv("CALENDAR_SOURCE", "franime").lower()
+PROXY_URL = os.getenv("CALENDAR_PROXY_URL") or os.getenv("FIXIE_URL") or None
 SOURCE_URL = os.getenv("CALENDAR_SOURCE_URL", "https://franime.fr/calendrier")
 SOURCE_TZ = os.getenv("CALENDAR_SOURCE_TZ", "Europe/Paris")
 SYNC_INTERVAL_MIN = max(5, int(os.getenv("CALENDAR_SYNC_INTERVAL_MIN", "30")))
@@ -208,7 +211,7 @@ async def _download() -> str:
         "Accept": "text/html,application/xhtml+xml",
         "Accept-Language": "fr-FR,fr;q=0.9",
     }
-    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0, headers=headers) as client:
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0, headers=headers, proxy=PROXY_URL) as client:
         resp = await client.get(SOURCE_URL)
     if resp.status_code != 200:
         raise RuntimeError(f"HTTP {resp.status_code}")

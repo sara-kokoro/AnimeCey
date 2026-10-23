@@ -462,6 +462,13 @@ async def live_home(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get("/sitemap/entries")
+async def sitemap_entries(db: AsyncSession = Depends(get_db)):
+    """Toutes les fiches pour le sitemap.xml du site (id + date de dernière mise à jour)."""
+    rows = (await db.execute(select(Anime.id, Anime.updated_at).order_by(Anime.id))).all()
+    return [{"id": r.id, "updated_at": r.updated_at.isoformat() if r.updated_at else None} for r in rows]
+
+
 @router.get("/{anime_id}")
 async def get_anime(anime_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Anime).where(Anime.id == anime_id))
