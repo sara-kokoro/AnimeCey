@@ -172,6 +172,9 @@ def parse_calendar(page: str) -> list[dict]:
             url = urlparse(raw["href"])
             q = parse_qs(url.query)
             franime_id = int(q["anime_id"][0])
+            if not (0 < franime_id <= 2_147_483_647):  # colonne INTEGER Postgres (ex. The Simpsons : 45666666666)
+                logger.warning("Calendrier : anime_id hors limites ignoré : %s (%s)", franime_id, raw["href"][:120])
+                continue
             lang_code = (q.get("lang") or ["vo"])[0].lower()
             season_raw = (q.get("s") or ["1"])[0].strip() or "1"
             slug = url.path.rstrip("/").split("/")[-1]
@@ -181,7 +184,7 @@ def parse_calendar(page: str) -> list[dict]:
         episode = hour = minute = None
         titles: list[str] = []
         for text in raw["texts"]:
-            m = re.fullmatch(r"E\s?(\d+)", text)
+            m = re.fullmatch(r"E\s?(\d{1,4})", text)
             if m and episode is None:
                 episode = int(m.group(1))
                 continue
@@ -191,11 +194,16 @@ def parse_calendar(page: str) -> list[dict]:
                 continue
             titles.append(text)
         if episode is None or hour is None:  # textes collés dans un seul bloc
-            m = re.match(r"E\s?(\d+)(.*?)(\d{1,2})\s*h\s*(\d{2})", "".join(raw["texts"]))
+            m = re.match(r"E\s?(\d{1,4})(?!\d)(.*?)(\d{1,2})\s*h\s*(\d{2})", "".join(raw["texts"]))
             if m:
                 episode, hour, minute = int(m.group(1)), int(m.group(3)), int(m.group(4))
                 titles = [m.group(2).strip()] if m.group(2).strip() else []
         if episode is None or hour is None or raw["day"] is None:
+            if episode is not None or hour is not None:
+                logger.warning("Calendrier : sortie ignorée (lecture incomplète) : %r", raw["texts"][:6])
+            continue
+        if not (0 < episode <= 9999):  # garde-fou : la colonne est un INTEGER Postgres
+            logger.warning("Calendrier : épisode aberrant %s ignoré : %r", episode, raw["texts"][:6])
             continue
 
         day, month = raw["day"]
