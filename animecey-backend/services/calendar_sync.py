@@ -32,11 +32,13 @@ Variables d'environnement (toutes optionnelles) :
   CALENDAR_UNPIN_AFTER_H      heures avant de désépingler          (défaut : 24)
   CALENDAR_SOURCE_URL         page à lire (défaut : https://franime.fr/calendrier)
   CALENDAR_SOURCE             franime (défaut) / anilist
-  ZENROWS_API_KEY             si défini, la page FRAnime est lue via l'API ZenRows (prioritaire sur le proxy)
+  ZENROWS_API_KEY             clé ZenRows : sert de secours si le proxy Fixie échoue (ou de méthode
+                              principale s'il n'y a pas de proxy)
   CALENDAR_ZENROWS_PARAMS     options ZenRows au format URL (sinon ZENROWS_PARAMS, sinon
                               premium_proxy=true&proxy_country=fr). Ajoute &js_render=true si la
                               page revient vide.
   CALENDAR_PROXY_URL          proxy HTTP pour lire FRAnime (sinon FIXIE_URL, fourni par Fixie)
+  CALENDAR_FETCH_MODE         auto (défaut : Fixie d'abord, ZenRows en secours) / fixie / zenrows / direct
   CALENDAR_SOURCE_TZ          fuseau des heures de la page          (défaut : Europe/Paris)
 
 Mettre ce fichier dans services/calendar_sync.py.
@@ -75,6 +77,7 @@ ZENROWS_KEY = os.getenv("ZENROWS_API_KEY", "").strip()
 ZENROWS_PARAMS = (
     os.getenv("CALENDAR_ZENROWS_PARAMS") or os.getenv("ZENROWS_PARAMS") or "premium_proxy=true&proxy_country=fr"
 ).strip()
+FETCH_MODE = os.getenv("CALENDAR_FETCH_MODE", "auto").strip().lower()
 SOURCE_URL = os.getenv("CALENDAR_SOURCE_URL", "https://franime.fr/calendrier")
 SOURCE_TZ = os.getenv("CALENDAR_SOURCE_TZ", "Europe/Paris")
 SYNC_INTERVAL_MIN = max(5, int(os.getenv("CALENDAR_SYNC_INTERVAL_MIN") or (10080 if SOURCE == "franime" else 30)))
@@ -216,27 +219,62 @@ def parse_calendar(page: str) -> list[dict]:
     return list(found.values())
 
 
+def _hide_credentials(text: str) -> str:
+    """Retire user:mot_de_passe@ d'un message d'erreur (le proxy Fixie contient des identifiants)."""
+    return re.sub(r"://[^/@\s]+@", "://***@", text)
+
+
+async def _download_zenrows(headers: dict) -> str:
+    from urllib.parse import parse_qsl
+
+    params = {"apikey": ZENROWS_KEY, "url": SOURCE_URL}
+    params.update(dict(parse_qsl(ZENROWS_PARAMS)))
+    async with httpx.AsyncClient(follow_redirects=True, timeout=90.0) as client:
+        resp = await client.get("https://api.zenrows.com/v1/", params=params)
+    if resp.status_code != 200:
+        raise RuntimeError(f"ZenRows HTTP {resp.status_code} : {resp.text[:200]}")
+    return resp.text
+
+
+async def _download_http(headers: dict, proxy: str | None) -> str:
+    """Lecture directe, ou via le proxy HTTP (Fixie) quand `proxy` est donné."""
+    label = "Fixie" if proxy else "direct"
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=45.0, headers=headers, proxy=proxy) as client:
+            resp = await client.get(SOURCE_URL)
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"{label} : {_hide_credentials(f'{type(exc).__name__}: {exc}')}") from exc
+    if resp.status_code != 200:
+        raise RuntimeError(f"{label} HTTP {resp.status_code} : {resp.text[:150]!r}")
+    return resp.text
+
+
 async def _download() -> str:
     headers = {
         "User-Agent": USER_AGENT,
         "Accept": "text/html,application/xhtml+xml",
         "Accept-Language": "fr-FR,fr;q=0.9",
     }
-    if ZENROWS_KEY:  # API ZenRows : elle va chercher la page à notre place (consomme des crédits)
-        from urllib.parse import parse_qsl
+    # Ordre des méthodes : Fixie d'abord (gratuit/peu cher), ZenRows seulement en secours.
+    methods: list[tuple[str, object]] = []
+    if FETCH_MODE in ("auto", "fixie") and PROXY_URL:
+        methods.append(("Fixie", lambda: _download_http(headers, PROXY_URL)))
+    if FETCH_MODE in ("auto", "zenrows") and ZENROWS_KEY:
+        methods.append(("ZenRows", lambda: _download_zenrows(headers)))
+    if FETCH_MODE == "direct" or not methods:
+        methods.append(("direct", lambda: _download_http(headers, None)))
 
-        params = {"apikey": ZENROWS_KEY, "url": SOURCE_URL}
-        params.update(dict(parse_qsl(ZENROWS_PARAMS)))
-        async with httpx.AsyncClient(follow_redirects=True, timeout=90.0) as client:
-            resp = await client.get("https://api.zenrows.com/v1/", params=params)
-        if resp.status_code != 200:
-            raise RuntimeError(f"ZenRows HTTP {resp.status_code} : {resp.text[:200]}")
-        return resp.text
-    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0, headers=headers, proxy=PROXY_URL) as client:
-        resp = await client.get(SOURCE_URL)
-    if resp.status_code != 200:
-        raise RuntimeError(f"HTTP {resp.status_code}")
-    return resp.text
+    errors: list[str] = []
+    for name, fn in methods:
+        try:
+            page = await fn()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Calendrier : lecture %s en échec : %s", name, _hide_credentials(str(exc)))
+            errors.append(_hide_credentials(str(exc)))
+            continue
+        logger.info("Calendrier : page lue via %s (%d octets)", name, len(page))
+        return page
+    raise RuntimeError(" | ".join(errors))
 
 
 # ── Lien avec les animés du site ───────────────────────────────────────
