@@ -183,6 +183,14 @@ def parse_calendar(page: str) -> list[dict]:
 
         episode = hour = minute = None
         titles: list[str] = []
+        # FRAnime sépare parfois « E » et le numéro : ['E', '5', '19h26', 'Titre'] -> ['E5', '19h26', 'Titre']
+        texts: list[str] = []
+        for text in raw["texts"]:
+            if texts and texts[-1] == "E" and re.fullmatch(r"\d{1,4}", text):
+                texts[-1] = "E" + text
+            else:
+                texts.append(text)
+        raw["texts"] = texts
         for text in raw["texts"]:
             m = re.fullmatch(r"E\s?(\d{1,4})", text)
             if m and episode is None:
@@ -193,7 +201,7 @@ def parse_calendar(page: str) -> list[dict]:
                 hour, minute = int(m.group(1)), int(m.group(2))
                 continue
             titles.append(text)
-        if episode is None or hour is None:  # textes collés dans un seul bloc
+        if (episode is None or hour is None) and len(raw["texts"]) == 1:  # tout collé dans un seul bloc
             m = re.match(r"E\s?(\d{1,4})(?!\d)(.*?)(\d{1,2})\s*h\s*(\d{2})", "".join(raw["texts"]))
             if m:
                 episode, hour, minute = int(m.group(1)), int(m.group(3)), int(m.group(4))
