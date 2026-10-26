@@ -16,6 +16,8 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BottomNav } from "@/components/layout/BottomNav";
+import { DownloadAdModal } from "@/components/ads/DownloadAdModal";
+import { registerAppSw } from "@/lib/pwaRegister";
 
 function NotFoundComponent() {
   return (
@@ -133,6 +135,10 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
+  useEffect(() => {
+    void registerAppSw();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -142,6 +148,7 @@ function RootComponent() {
           <Outlet />
         </div>
         <BottomNav />
+        <DownloadAdModal />
       </TooltipProvider>
     </QueryClientProvider>
   );

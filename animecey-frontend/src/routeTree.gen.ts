@@ -21,6 +21,7 @@ import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as SeriesRouteImport } from './routes/series'
+import { Route as TelechargementsRouteImport } from './routes/telechargements'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminAnimesRouteImport } from './routes/admin/animes'
 import { Route as AdminBroadcastRouteImport } from './routes/admin/broadcast'
@@ -91,6 +92,11 @@ const SeriesRoute = SeriesRouteImport.update({
   path: '/series',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TelechargementsRoute = TelechargementsRouteImport.update({
+  id: '/telechargements',
+  path: '/telechargements',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminIndexRoute = AdminIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -150,6 +156,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ProfileRoute
   '/search': typeof SearchRoute
   '/series': typeof SeriesRoute
+  '/telechargements': typeof TelechargementsRoute
   '/admin/animes': typeof AdminAnimesRoute
   '/admin/broadcast': typeof AdminBroadcastRoute
   '/admin/comments': typeof AdminCommentsRoute
@@ -172,6 +179,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ProfileRoute
   '/search': typeof SearchRoute
   '/series': typeof SeriesRoute
+  '/telechargements': typeof TelechargementsRoute
   '/admin/animes': typeof AdminAnimesRoute
   '/admin/broadcast': typeof AdminBroadcastRoute
   '/admin/comments': typeof AdminCommentsRoute
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/profile': typeof ProfileRoute
   '/search': typeof SearchRoute
   '/series': typeof SeriesRoute
+  '/telechargements': typeof TelechargementsRoute
   '/admin/animes': typeof AdminAnimesRoute
   '/admin/broadcast': typeof AdminBroadcastRoute
   '/admin/comments': typeof AdminCommentsRoute
@@ -221,6 +230,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/search'
     | '/series'
+    | '/telechargements'
     | '/admin/animes'
     | '/admin/broadcast'
     | '/admin/comments'
@@ -243,6 +253,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/search'
     | '/series'
+    | '/telechargements'
     | '/admin/animes'
     | '/admin/broadcast'
     | '/admin/comments'
@@ -266,6 +277,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/search'
     | '/series'
+    | '/telechargements'
     | '/admin/animes'
     | '/admin/broadcast'
     | '/admin/comments'
@@ -290,6 +302,7 @@ export interface RootRouteChildren {
   ProfileRoute: typeof ProfileRoute
   SearchRoute: typeof SearchRoute
   SeriesRoute: typeof SeriesRoute
+  TelechargementsRoute: typeof TelechargementsRoute
   AnimeIdRoute: typeof AnimeIdRoute
   GenreSlugRoute: typeof GenreSlugRoute
   WatchIdRoute: typeof WatchIdRoute
@@ -379,6 +392,13 @@ declare module '@tanstack/react-router' {
       path: '/series'
       fullPath: '/series'
       preLoaderRoute: typeof SeriesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/telechargements': {
+      id: '/telechargements'
+      path: '/telechargements'
+      fullPath: '/telechargements'
+      preLoaderRoute: typeof TelechargementsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/': {
@@ -480,6 +500,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProfileRoute: ProfileRoute,
   SearchRoute: SearchRoute,
   SeriesRoute: SeriesRoute,
+  TelechargementsRoute: TelechargementsRoute,
   AnimeIdRoute: AnimeIdRoute,
   GenreSlugRoute: GenreSlugRoute,
   WatchIdRoute: WatchIdRoute,

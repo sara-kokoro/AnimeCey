@@ -1,0 +1,4 @@
+- [ ] Integrate sequential RichAds download video gate and configuration.
+- [ ] Cancel active downloads and validate serial queue behavior.
+- [ ] Enlarge download library and verify desktop/mobile flows.
+- [ ] Verify offline opening, tests and package clean source ZIP.

@@ -1,0 +1,96 @@
+import { useEffect, useState } from "react";
+import { Check, CloudDownload, Loader2, X } from "lucide-react";
+import { toast } from "sonner";
+import { hasVideo } from "@/lib/offlineDb";
+import { useDownloadsStore } from "@/stores/downloads";
+import type { Episode } from "@/types";
+
+interface Props {
+  episode: Episode;
+  animeTitle?: string;
+  seasonLabel: string;
+}
+
+/**
+ * Bouton « Hors ligne » : ouvre la pub RichAds (lien direct) dans un nouvel onglet,
+ * puis ajoute l'épisode à la file de téléchargement interne de l'app.
+ * Visible uniquement quand l'épisode existe en fichier direct (ServCey 1).
+ */
+export function OfflineDownloadButton({ episode, animeTitle, seasonLabel }: Props) {
+  const enqueue = useDownloadsStore((s) => s.requestDownloads);
+  const removeTask = useDownloadsStore((s) => s.removeTask);
+  const task = useDownloadsStore((s) => s.tasks.find((t) => t.episodeId === episode.id));
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void hasVideo(episode.id).then((v) => !cancelled && setSaved(v));
+    return () => {
+      cancelled = true;
+    };
+  }, [episode.id, task?.status]);
+
+  if (!episode.servcey1_available) return null;
+
+  const onClick = async () => {
+    if (saved || task?.status === "done") {
+      toast.info("Cet épisode est déjà dans tes téléchargements.");
+      return;
+    }
+    if (task) {
+      toast.info("Cet épisode est déjà dans la file de téléchargement.");
+      return;
+    }
+    await enqueue([
+      {
+        episodeId: episode.id,
+        animeId: episode.anime_id,
+        animeTitle: animeTitle ?? "Anime",
+        episodeNumber: episode.episode_number,
+        seasonLabel,
+        language: episode.language,
+        thumbnailUrl: episode.thumbnail_url,
+      },
+    ]).catch((e) => toast.error(e instanceof Error ? e.message : "Téléchargement impossible."));
+  };
+
+  const busy = task?.status === "downloading" || task?.status === "pending";
+  const done = saved || task?.status === "done";
+
+  return (
+    <span className="inline-flex items-center gap-1">
+    <button
+      onClick={onClick}
+      disabled={busy}
+      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold hover:border-primary/40 transition-colors disabled:opacity-60"
+    >
+      {busy ? (
+        <Loader2 className="w-4 h-4 animate-spin text-primary" />
+      ) : done ? (
+        <Check className="w-4 h-4 text-primary" />
+      ) : (
+        <CloudDownload className="w-4 h-4" />
+      )}
+      {busy
+        ? task?.status === "downloading"
+          ? `${task.progress}%`
+          : "En attente"
+        : done
+          ? "Disponible"
+          : "Hors ligne"}
+    </button>
+    {busy && (
+      <button
+        onClick={() => {
+          removeTask(episode.id);
+          toast.info("Téléchargement annulé.");
+        }}
+        aria-label="Annuler le téléchargement"
+        className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-surface border border-border text-sm font-semibold hover:border-destructive/60"
+      >
+        <X className="w-4 h-4" /> Annuler
+      </button>
+    )}
+    </span>
+  );
+}

@@ -1,12 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, CalendarDays, LayoutGrid, Bookmark, User } from "lucide-react";
+import { Home, CalendarDays, LayoutGrid, CloudDownload, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { to: "/", label: "Accueil", icon: Home, match: (p: string) => p === "/" },
   { to: "/calendrier", label: "Calendrier", icon: CalendarDays, match: (p: string) => p.startsWith("/calendrier") },
   { to: "/catalogue", label: "Catalogue", icon: LayoutGrid, center: true, match: (p: string) => p.startsWith("/catalogue") },
-  { to: "/profile", label: "Ma Liste", icon: Bookmark, hash: "liste", match: () => false },
+  { to: "/telechargements", label: "Télécharg.", icon: CloudDownload, match: (p: string) => p.startsWith("/telechargements") },
   { to: "/profile", label: "Profil", icon: User, match: (p: string) => p.startsWith("/profile") || p.startsWith("/auth") },
 ] as const;
 
@@ -51,7 +51,6 @@ export function BottomNav() {
             <li key={it.label}>
               <Link
                 to={it.to}
-                hash={"hash" in it ? it.hash : undefined}
                 className={cn(
                   "h-full flex flex-col items-center justify-center gap-1 text-[10px] font-semibold transition-colors",
                   active ? "text-primary" : "text-muted-foreground hover:text-foreground",

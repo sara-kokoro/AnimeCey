@@ -42,6 +42,16 @@ export const VAST = {
 };
 
 /**
+ * RichAds : tag VAST éditeur pour les téléchargements hors ligne.
+ * La zone doit autoriser ce placement et les demandes consécutives.
+ * Sans tag, les téléchargements restent bloqués : aucune pub simulée.
+ */
+export const RICHADS = {
+  directLink: (env.VITE_RICHADS_DIRECTLINK as string | undefined) ?? "",
+  vastTag: (env.VITE_RICHADS_VAST as string | undefined) ?? "",
+};
+
+/**
  * Adsterra : bannière native (largeur adaptable) et bannière 320×50.
  * Pour désactiver un format, mets sa valeur « src » à une chaîne vide.
  */

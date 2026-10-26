@@ -2,12 +2,15 @@ import { useParams, Navigate, Link, useNavigate } from "@/lib/router";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Heart, Languages, LayoutGrid, List, Loader2, Server, SkipBack, SkipForward } from "lucide-react";
+import { Check, CloudDownload, Heart, Languages, LayoutGrid, List, ListChecks, Loader2, Server, SkipBack, SkipForward, X } from "lucide-react";
+import { toast } from "sonner";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ToggleGroup2 } from "@/components/ui/ToggleGroup2";
 import { ServCeyPlayer } from "@/components/player/ServCeyPlayer";
 import { DownloadButton } from "@/components/player/DownloadButton";
+import { OfflineDownloadButton } from "@/components/player/OfflineDownloadButton";
+import { useDownloadsStore } from "@/stores/downloads";
 import { MultiTagAd } from "@/components/ads/MultiTagAd";
 import { VastGate } from "@/components/ads/VastGate";
 import { BannerAd } from "@/components/ads/BannerAd";
@@ -31,6 +34,9 @@ export default function Watch() {
   const [loading, setLoading] = useState(true);
   const [langNotice, setLangNotice] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "grid">("list");
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const enqueueDownloads = useDownloadsStore((s) => s.requestDownloads);
 
   const { data: episode, isLoading: loadingEp } = useQuery({
     queryKey: ["episode", Number(id)],
@@ -178,6 +184,43 @@ export default function Watch() {
   const pillBtn =
     "inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-surface border border-border-subtle text-sm font-semibold hover:bg-surface-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 
+  const toggleSelect = (episodeId: number) => {
+    setSelected((prev) => {
+      const nextSet = new Set(prev);
+      if (nextSet.has(episodeId)) nextSet.delete(episodeId);
+      else nextSet.add(episodeId);
+      return nextSet;
+    });
+  };
+
+  const startBulkDownload = async () => {
+    const items = episodes
+      .filter((e) => selected.has(e.id) && e.servcey1_available)
+      .map((e) => ({
+        episodeId: e.id,
+        animeId: e.anime_id,
+        animeTitle: anime?.title ?? "Anime",
+        episodeNumber: e.episode_number,
+        seasonLabel,
+        language: e.language,
+        thumbnailUrl: e.thumbnail_url,
+      }));
+    if (items.length === 0) {
+      toast.info("Aucun épisode téléchargeable dans ta sélection.");
+      return;
+    }
+    let added = 0;
+    try {
+      added = await enqueueDownloads(items);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Téléchargement impossible.");
+      return;
+    }
+    setSelected(new Set());
+    setSelectMode(false);
+    if (added === 0) toast.info("Ces épisodes sont déjà téléchargés ou dans la file.");
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -268,6 +311,9 @@ export default function Watch() {
               <DownloadButton episodeId={episode.id} />
             </div>
             <div className="shrink-0">
+              <OfflineDownloadButton episode={episode} animeTitle={anime?.title} seasonLabel={seasonLabel} />
+            </div>
+            <div className="shrink-0">
               <ReportButton episodeId={episode.id} animeId={anime?.id} label="Signaler" />
             </div>
           </div>
@@ -307,7 +353,22 @@ export default function Watch() {
               <h2 className="font-display font-bold text-lg">
                 Épisodes <span className="text-muted-foreground font-normal text-sm">· {seasonLabel}</span>
               </h2>
-              <div className="flex rounded-full bg-surface border border-border-subtle p-1">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setSelectMode((v) => !v);
+                    setSelected(new Set());
+                  }}
+                  className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full text-xs font-bold transition-colors ${
+                    selectMode
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-surface border border-border-subtle text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {selectMode ? <X className="w-3.5 h-3.5" /> : <ListChecks className="w-3.5 h-3.5" />}
+                  {selectMode ? "Annuler" : "Sélectionner"}
+                </button>
+                <div className="flex rounded-full bg-surface border border-border-subtle p-1">
                 <button
                   onClick={() => setView("list")}
                   aria-label="Mode liste"
@@ -322,9 +383,58 @@ export default function Watch() {
                 >
                   <LayoutGrid className="w-4 h-4" />
                 </button>
+                </div>
               </div>
             </div>
-            {view === "list" ? (
+            {selectMode ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {episodes.map((ep) => {
+                  const isSelected = selected.has(ep.id);
+                  const downloadable = ep.servcey1_available;
+                  return (
+                    <button
+                      key={ep.id}
+                      onClick={() => downloadable && toggleSelect(ep.id)}
+                      disabled={!downloadable}
+                      className={`flex items-center gap-3 rounded-2xl border p-2.5 text-left transition-colors ${
+                        isSelected
+                          ? "border-primary bg-primary/10"
+                          : downloadable
+                            ? "border-border-subtle bg-surface hover:border-primary/40"
+                            : "border-border-subtle bg-surface opacity-40 cursor-not-allowed"
+                      }`}
+                    >
+                      <span
+                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+                          isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3.5 h-3.5" />}
+                      </span>
+                      <div className="relative w-24 aspect-video rounded-lg overflow-hidden bg-foreground/5 shrink-0">
+                        {ep.thumbnail_url ? (
+                          <img src={ep.thumbnail_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs font-bold">
+                            EP {ep.episode_number}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold truncate">
+                          Épisode {ep.episode_number}
+                          {ep.title ? ` : ${ep.title}` : ""}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {ep.language}
+                          {!downloadable && " · Non téléchargeable"}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : view === "list" ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                 {episodes.map((ep, i) => (
                   <EpisodeCard key={ep.id} episode={ep} seasonLabel={seasonLabel} index={i} active={ep.id === episode.id} compact />
@@ -346,6 +456,26 @@ export default function Watch() {
           </div>
         </div>
       </div>
+
+      {/* Barre de téléchargement groupé */}
+      {selectMode && selected.size > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="fixed bottom-20 md:bottom-6 inset-x-4 md:inset-x-auto md:right-6 z-40 flex items-center justify-between gap-4 rounded-2xl bg-surface border border-primary/40 shadow-glow px-4 py-3 md:min-w-80"
+        >
+          <p className="text-sm font-semibold">
+            {selected.size} épisode{selected.size > 1 ? "s" : ""} sélectionné{selected.size > 1 ? "s" : ""}
+          </p>
+          <button
+            onClick={() => void startBulkDownload()}
+            className="inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-bold hover:bg-primary-dim transition-colors"
+          >
+            <CloudDownload className="w-4 h-4" />
+            Télécharger
+          </button>
+        </motion.div>
+      )}
 
       <Footer />
     </motion.div>

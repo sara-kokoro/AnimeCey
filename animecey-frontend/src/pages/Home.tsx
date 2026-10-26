@@ -12,6 +12,8 @@ import { RankedRow } from "@/components/home/RankedRow";
 import { LiveHome } from "@/components/home/LiveHome";
 import { LatestReleasesRail } from "@/components/home/LatestReleasesRail";
 import { AnimeCard } from "@/components/anime/AnimeCard";
+import { CoverflowCarousel } from "@/components/home/CoverflowCarousel";
+import { PagedSlider } from "@/components/home/PagedSlider";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import { SocialBarAd } from "@/components/ads/SocialBarAd";
@@ -138,17 +140,20 @@ export default function Home() {
         )}
 
         <Section title={<Title icon={<Sparkles className="w-5 h-5 text-primary" />}>Derniers ajouts</Title>} href="/catalogue?sort=recent">
-          <HorizontalScroll>
-            <Row data={latest.data} isLoading={latest.isLoading} />
-          </HorizontalScroll>
+          <PagedSlider items={latest.data} isLoading={latest.isLoading} />
         </Section>
 
         <AdsterraBanner format="native" className="my-8" />
 
         <Section title={<Title icon={<Star className="w-5 h-5 text-primary" />}>Les mieux notés</Title>} href="/catalogue?sort=score">
-          <HorizontalScroll>
-            <Row data={topRated.data} isLoading={topRated.isLoading} />
-          </HorizontalScroll>
+          <CoverflowCarousel
+            tabs={[
+              { key: "top", label: "Mieux notés", items: topRated.data, isLoading: topRated.isLoading },
+              { key: "trending", label: "Tendances", items: trending.data, isLoading: trending.isLoading },
+              { key: "week", label: "Top semaine", items: topWeek.data, isLoading: topWeek.isLoading },
+              { key: "latest", label: "Derniers ajouts", items: latest.data, isLoading: latest.isLoading },
+            ]}
+          />
         </Section>
 
         {(filmsJp.isLoading || (filmsJp.data && filmsJp.data.items.length > 0)) && (
