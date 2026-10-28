@@ -19,6 +19,8 @@ import { useAuthStore } from "@/stores/auth";
 import { ReportButton } from "@/components/report/ReportButton";
 import { BannerAd } from "@/components/ads/BannerAd";
 import { SocialBarAd } from "@/components/ads/SocialBarAd";
+import { OnClickAd } from "@/components/ads/OnClickAd";
+import { PushAd } from "@/components/ads/PushAd";
 import type { Language } from "@/types";
 
 export default function AnimeDetail() {
@@ -255,6 +257,8 @@ export default function AnimeDetail() {
 
       <main className="mx-auto max-w-5xl px-4 md:px-6 pb-20">
         <SocialBarAd />
+        <OnClickAd />
+        <PushAd />
 
         <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-background/90 backdrop-blur-xl">
           <div className="flex gap-1 p-1 rounded-full bg-surface border border-border-subtle w-fit max-w-full overflow-x-auto no-scrollbar mx-auto">

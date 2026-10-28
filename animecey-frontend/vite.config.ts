@@ -24,8 +24,8 @@ export default defineConfig({
         // Le manifeste existe déjà : public/site.webmanifest
         manifest: false,
         workbox: {
-          // Notifications push : l'ancien worker est importé tel quel dans le worker généré.
-          importScripts: ["/push-sw.js"],
+          // Notifications push : nos notifications (push-sw.js) et celles de Monetag (monetag-sw.js) sont importées dans le worker généré.
+          importScripts: ["/push-sw.js", "/monetag-sw.js"],
           navigateFallback: "/index.html",
           navigateFallbackDenylist: [/^\/~oauth/, /^\/api\//],
           runtimeCaching: [

@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 // Zone Monetag « Vignette » de magi-stream.online. Surchargeable avec VITE_MONETAG_VIGNETTE_ZONE.
-const ZONE: string = import.meta.env.VITE_MONETAG_VIGNETTE_ZONE ?? "11978346";
+const ZONE: string = import.meta.env.VITE_MONETAG_VIGNETTE_ZONE ?? "12139879";
 const SRC = "https://n6wxm.com/vignette.min.js";
 
 /**

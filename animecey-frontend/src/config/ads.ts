@@ -71,3 +71,22 @@ export const ADSTERRA = {
     src: "https://asperitymeg.com/65/0e/b5/650eb564bed8abd40af0d7ca7ac5f337.js",
   },
 };
+
+/**
+ * Monetag (tableau de bord Monetag → Sites → magi-stream.online).
+ * Chaque valeur peut être remplacée par une variable d'environnement (VITE_MONETAG_...).
+ * Une zone vide désactive le format.
+ */
+export const MONETAG = {
+  /** OnClick (Popunder) : pages « détails » et « lecture ». */
+  onclick: {
+    zone: (env.VITE_MONETAG_ONCLICK_ZONE as string | undefined) ?? "12139840",
+    src: "https://al5sm.com/tag.min.js",
+  },
+  /** Notifications push (remplacent celles de HilltopAds) : code Monetag collé tel quel. */
+  push: {
+    code:
+      (env.VITE_MONETAG_PUSH_CODE as string | undefined) ??
+      String.raw`<script src="https://5gvci.com/act/files/tag.min.js?z=12007084" data-cfasync="false" async></script>`,
+  },
+};

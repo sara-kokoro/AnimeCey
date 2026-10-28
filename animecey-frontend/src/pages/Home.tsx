@@ -17,6 +17,7 @@ import { PagedSlider } from "@/components/home/PagedSlider";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import { SocialBarAd } from "@/components/ads/SocialBarAd";
+import { PushAd } from "@/components/ads/PushAd";
 import { fetchAnimes, fetchLiveHome, fetchTopWeek, fetchTopRated, fetchLatest, fetchTrending } from "@/api/animes";
 import type { Anime } from "@/types";
 
@@ -96,6 +97,7 @@ export default function Home() {
 
       <main className="mx-auto max-w-7xl px-3 md:px-6">
         <SocialBarAd />
+        <PushAd />
 
         <nav aria-label="Sections" className="mt-2 flex gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 md:mx-0 md:px-0">
           <button onClick={() => jump("animes")} className="shrink-0 px-4 py-2 rounded-full bg-primary text-primary-foreground text-sm font-semibold">
