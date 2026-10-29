@@ -59,7 +59,7 @@
         play.className = "pri"; play.textContent = "Regarder";
         play.onclick = function () {
           var v = document.getElementById("player");
-          v.src = window.Capacitor.convertFileSrc(it.path);
+          v.src = fileUrl(it.path);
           v.hidden = false; v.play(); window.scrollTo(0, 0);
         };
         li.appendChild(t); li.appendChild(play);
@@ -67,16 +67,20 @@
       });
     }
 
-    function getPlugin() {
+    // Lecture de la liste : d'abord l'interface fournie par l'application (MagiNative), puis le plugin Capacitor.
+    function readItems() {
+      if (window.MagiNative && window.MagiNative.list) {
+        try { return Promise.resolve(JSON.parse(window.MagiNative.list())); } catch (e) { return Promise.reject(e); }
+      }
       var c = window.Capacitor;
-      if (!c) return null;
-      try {
-        if (c.Plugins && c.Plugins.MagiDownloader) return c.Plugins.MagiDownloader;
-        if (c.registerPlugin && (!c.isPluginAvailable || c.isPluginAvailable("MagiDownloader"))) {
-          return c.registerPlugin("MagiDownloader");
-        }
-      } catch (e) { /* on réessaiera */ }
-      return null;
+      var plugin = c && ((c.Plugins && c.Plugins.MagiDownloader) || (c.registerPlugin && c.registerPlugin("MagiDownloader")));
+      if (plugin) return plugin.list().then(function (r) { return (r.items || []).filter(function (i) { return i.status === "done" && i.path; }); });
+      return Promise.reject(new Error("module natif indisponible"));
+    }
+
+    function fileUrl(path) {
+      if (window.Capacitor && window.Capacitor.convertFileSrc) return window.Capacitor.convertFileSrc(path);
+      return location.origin + "/_capacitor_file_" + path;
     }
 
     function showMessage(text) {
@@ -84,17 +88,9 @@
       document.querySelector("#list .empty").textContent = text;
     }
 
-    // Le pont natif peut mettre un instant à être prêt : on réessaie quelques secondes.
     function load(attempt) {
-      var plugin = getPlugin();
-      if (!plugin) {
-        if (attempt < 10) { setTimeout(function () { load(attempt + 1); }, 300); return; }
-        showMessage("Impossible de lire les téléchargements (module natif indisponible).");
-        return;
-      }
-      plugin.list().then(function (r) {
-        render((r.items || []).filter(function (i) { return i.status === "done" && i.path; }));
-      }).catch(function (e) {
+      readItems().then(render).catch(function (e) {
+        if (attempt < 8) { setTimeout(function () { load(attempt + 1); }, 400); return; }
         showMessage("Impossible de lire les téléchargements : " + (e && e.message ? e.message : e));
       });
     }

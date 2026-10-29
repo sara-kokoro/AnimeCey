@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -71,6 +72,18 @@ final class DownloadStore {
             }
         }
         return out;
+    }
+
+    /** Épisodes terminés dont le fichier existe encore, en JSON (utilisé par la page hors connexion). */
+    static String doneJson(Context c) {
+        JSONArray out = new JSONArray();
+        for (JSONObject o : all(c)) {
+            if (!"done".equals(o.optString("status"))) continue;
+            String path = o.optString("path", "");
+            if (path.isEmpty() || !new File(path).exists()) continue;
+            out.put(o);
+        }
+        return out.toString();
     }
 
     /** Enregistre l'état d'un téléchargement et prévient la page. */
