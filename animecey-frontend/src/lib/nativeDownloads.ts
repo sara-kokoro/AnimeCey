@@ -37,14 +37,21 @@ function cap(): any {
 export function isNativeApp(): boolean {
   try {
     const c = cap();
-    return !!c?.isNativePlatform?.() && !!c?.Plugins?.MagiDownloader;
+    // Accès direct (celui qui fonctionnait déjà), puis API officielle de Capacitor en secours
+    return !!c?.isNativePlatform?.() && (!!c?.Plugins?.MagiDownloader || !!c?.isPluginAvailable?.("MagiDownloader"));
   } catch {
     return false;
   }
 }
 
+let plugin: NativePlugin | null = null;
+
 export function nativePlugin(): NativePlugin {
-  return cap().Plugins.MagiDownloader as NativePlugin;
+  if (!plugin) {
+    const c = cap();
+    plugin = (c.Plugins?.MagiDownloader ?? c.registerPlugin("MagiDownloader")) as NativePlugin;
+  }
+  return plugin;
 }
 
 /** Adresse lisible par la page pour un fichier du téléphone. */

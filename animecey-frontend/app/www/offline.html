@@ -67,15 +67,39 @@
       });
     }
 
-    function load() {
-      var cap = window.Capacitor;
-      var plugin = cap && cap.Plugins && cap.Plugins.MagiDownloader;
-      if (!plugin) { render([]); return; }
+    function getPlugin() {
+      var c = window.Capacitor;
+      if (!c) return null;
+      try {
+        if (c.Plugins && c.Plugins.MagiDownloader) return c.Plugins.MagiDownloader;
+        if (c.registerPlugin && (!c.isPluginAvailable || c.isPluginAvailable("MagiDownloader"))) {
+          return c.registerPlugin("MagiDownloader");
+        }
+      } catch (e) { /* on réessaiera */ }
+      return null;
+    }
+
+    function showMessage(text) {
+      document.getElementById("list").innerHTML = '<div class="empty"></div>';
+      document.querySelector("#list .empty").textContent = text;
+    }
+
+    // Le pont natif peut mettre un instant à être prêt : on réessaie quelques secondes.
+    function load(attempt) {
+      var plugin = getPlugin();
+      if (!plugin) {
+        if (attempt < 10) { setTimeout(function () { load(attempt + 1); }, 300); return; }
+        showMessage("Impossible de lire les téléchargements (module natif indisponible).");
+        return;
+      }
       plugin.list().then(function (r) {
         render((r.items || []).filter(function (i) { return i.status === "done" && i.path; }));
-      }).catch(function () { render([]); });
+      }).catch(function (e) {
+        showMessage("Impossible de lire les téléchargements : " + (e && e.message ? e.message : e));
+      });
     }
-    load();
+    showMessage("Lecture des téléchargements…");
+    load(0);
   </script>
 </body>
 </html>
