@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -30,6 +30,13 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+
+      - name: Installer ImageMagick (icône) et accepter les licences Android
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq imagemagick
+          command -v convert || sudo ln -s "$(command -v magick)" /usr/local/bin/convert
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - name: Installer Capacitor et créer le projet Android
         run: |
