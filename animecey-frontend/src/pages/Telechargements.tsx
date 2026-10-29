@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Link } from "@/lib/router";
 import { motion } from "framer-motion";
 import {
@@ -15,7 +16,7 @@ import {
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ServCeyPlayer } from "@/components/player/ServCeyPlayer";
-import { deleteVideo, listVideos, type OfflineVideo } from "@/lib/offlineDb";
+import { deleteVideo, getPlaybackUrl, listVideos, type OfflineVideo } from "@/lib/offlineDb";
 import { useDownloadsStore } from "@/stores/downloads";
 
 function fmtSize(bytes: number): string {
@@ -32,6 +33,7 @@ export default function Telechargements() {
 
   const tasks = useDownloadsStore((s) => s.tasks);
   const removeTask = useDownloadsStore((s) => s.removeTask);
+  const retryTask = useDownloadsStore((s) => s.retryTask);
 
   const refresh = useCallback(async () => {
     try {
@@ -56,16 +58,25 @@ export default function Telechargements() {
     };
   }, []);
 
-  const play = (video: OfflineVideo) => {
-    if (playingUrl) URL.revokeObjectURL(playingUrl);
-    const url = URL.createObjectURL(video.blob);
-    setPlaying(video);
-    setPlayingUrl(url);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const releaseRef = useRef<() => void>(() => undefined);
+
+  const play = async (video: OfflineVideo) => {
+    releaseRef.current();
+    try {
+      const { url, release } = await getPlaybackUrl(video);
+      releaseRef.current = release;
+      setPlaying(video);
+      setPlayingUrl(url);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch {
+      releaseRef.current = () => undefined;
+      toast.error("Impossible d'ouvrir cet épisode. Supprime-le puis télécharge-le à nouveau.");
+    }
   };
 
   const closePlayer = () => {
-    if (playingUrl) URL.revokeObjectURL(playingUrl);
+    releaseRef.current();
+    releaseRef.current = () => undefined;
     setPlaying(null);
     setPlayingUrl(null);
   };
@@ -171,6 +182,14 @@ export default function Telechargements() {
                       </div>
                     )}
                   </div>
+                  {t.status === "error" && (
+                    <button
+                      onClick={() => retryTask(t.episodeId)}
+                      className="shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-semibold"
+                    >
+                      Réessayer
+                    </button>
+                  )}
                   <button
                     onClick={() => removeTask(t.episodeId)}
                     aria-label="Annuler le téléchargement"

@@ -1,0 +1,14 @@
+{
+  "appId": "online.magistream.app",
+  "appName": "Magi-Stream",
+  "webDir": "www",
+  "server": {
+    "url": "https://www.magi-stream.online",
+    "errorPath": "offline.html",
+    "allowNavigation": ["www.magi-stream.online", "magi-stream.online", "*.magi-stream.online", "*.koyeb.app"]
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#0a0a0a"
+  }
+}

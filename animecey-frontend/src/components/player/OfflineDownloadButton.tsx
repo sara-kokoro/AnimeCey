@@ -19,6 +19,7 @@ interface Props {
 export function OfflineDownloadButton({ episode, animeTitle, seasonLabel }: Props) {
   const enqueue = useDownloadsStore((s) => s.requestDownloads);
   const removeTask = useDownloadsStore((s) => s.removeTask);
+  const retryTask = useDownloadsStore((s) => s.retryTask);
   const task = useDownloadsStore((s) => s.tasks.find((t) => t.episodeId === episode.id));
   const [saved, setSaved] = useState(false);
 
@@ -35,6 +36,10 @@ export function OfflineDownloadButton({ episode, animeTitle, seasonLabel }: Prop
   const onClick = async () => {
     if (saved || task?.status === "done") {
       toast.info("Cet épisode est déjà dans tes téléchargements.");
+      return;
+    }
+    if (task?.status === "error") {
+      retryTask(episode.id);
       return;
     }
     if (task) {
@@ -77,7 +82,9 @@ export function OfflineDownloadButton({ episode, animeTitle, seasonLabel }: Prop
           : "En attente"
         : done
           ? "Disponible"
-          : "Hors ligne"}
+          : task?.status === "error"
+            ? "Réessayer"
+            : "Hors ligne"}
     </button>
     {busy && (
       <button

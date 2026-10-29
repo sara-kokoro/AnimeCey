@@ -18,6 +18,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { DownloadAdModal } from "@/components/ads/DownloadAdModal";
 import { registerAppSw } from "@/lib/pwaRegister";
+import { syncNativeDownloads } from "@/stores/downloads";
 
 function NotFoundComponent() {
   return (
@@ -137,6 +138,7 @@ function RootComponent() {
 
   useEffect(() => {
     void registerAppSw();
+    void syncNativeDownloads(); // application Android : relie la page au service de téléchargement natif
   }, []);
 
   return (

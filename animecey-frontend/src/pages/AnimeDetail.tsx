@@ -17,7 +17,6 @@ import { ensureSeason, fetchSeasonLabels } from "@/api/catalog";
 import { addFavorite, fetchFavorites, removeFavorite } from "@/api/users";
 import { useAuthStore } from "@/stores/auth";
 import { ReportButton } from "@/components/report/ReportButton";
-import { BannerAd } from "@/components/ads/BannerAd";
 import { SocialBarAd } from "@/components/ads/SocialBarAd";
 import { OnClickAd } from "@/components/ads/OnClickAd";
 import { PushAd } from "@/components/ads/PushAd";
@@ -298,7 +297,6 @@ export default function AnimeDetail() {
               ))}
             </dl>
             {anime.trailer_url && <ReportButton animeId={Number(id)} className="px-5 py-2.5 rounded-full" />}
-            <BannerAd />
             <AnimeCredits animeId={Number(id)} />
             {relatedList.length > 0 && (
               <section>

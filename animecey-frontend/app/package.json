@@ -1,0 +1,11 @@
+{
+  "name": "magi-stream-android",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Application Android de Magi-Stream (Capacitor)",
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  }
+}

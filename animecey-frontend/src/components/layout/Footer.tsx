@@ -1,4 +1,5 @@
 import { Link } from "@/lib/router";
+import { AppDownloadButton } from "@/components/AppDownloadButton";
 
 export function Footer() {
   return (
@@ -17,6 +18,7 @@ export function Footer() {
           <Link to="/genres" className="hover:text-foreground transition-colors">Genres</Link>
           <Link to="/legal" className="hover:text-foreground transition-colors">Mentions légales</Link>
           <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
+          <AppDownloadButton variant="inline" />
         </nav>
         <p className="text-xs font-body text-muted-dim">
           © {new Date().getFullYear()} Magi-Stream

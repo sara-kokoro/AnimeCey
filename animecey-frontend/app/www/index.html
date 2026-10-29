@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Magi-Stream</title>
+  <style>html,body{margin:0;height:100%;background:#0a0a0a;color:#f5f5f5;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center}</style>
+</head>
+<body>
+  <!-- L'application charge https://www.magi-stream.online (voir capacitor.config.json).
+       Cette page ne s'affiche que si le chargement échoue : on bascule alors sur la page hors connexion. -->
+  <p>Chargement…</p>
+  <script>location.replace("offline.html");</script>
+</body>
+</html>

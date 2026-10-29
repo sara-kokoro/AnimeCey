@@ -14,8 +14,6 @@ import { useDownloadsStore } from "@/stores/downloads";
 import { VignetteAd } from "@/components/ads/VignetteAd";
 import { OnClickAd } from "@/components/ads/OnClickAd";
 import { PushAd } from "@/components/ads/PushAd";
-import { VastGate } from "@/components/ads/VastGate";
-import { BannerAd } from "@/components/ads/BannerAd";
 import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
@@ -242,7 +240,6 @@ export default function Watch() {
               <Loader2 className="w-10 h-10 text-primary animate-spin" />
             </div>
           )}
-          <VastGate key={episode.id}>
           {playerUrl && isDirectVideo ? (
             <ServCeyPlayer
               key={`${episode.id}-${selectedKey}-${lang}`}
@@ -272,7 +269,6 @@ export default function Watch() {
               {noSource ? "Source non disponible pour ce serveur." : ""}
             </div>
           )}
-          </VastGate>
         </div>
 
         <div className="px-4 md:px-0">
