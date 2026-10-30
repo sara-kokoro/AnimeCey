@@ -10,6 +10,7 @@ Mettre ce fichier dans routers/calendar.py.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -24,6 +25,31 @@ from models_catalog import EpisodeServer
 from services import calendar_sync
 
 router = APIRouter()
+
+# Titres sans animé correspondant : on ne les recherche pas à chaque requête (réessai toutes les 2 min).
+_RELINK_TTL = 120.0
+_relink_miss: dict[str, float] = {}
+
+
+async def _relink(db: AsyncSession, entries: list[CalendarEntry]) -> None:
+    """Relie à un animé du site les sorties encore sans lien (animé ajouté après la lecture du calendrier)."""
+    now = time.monotonic()
+    changed = False
+    found: dict[str, int | None] = {}
+    for e in entries:
+        if e.anime_id:
+            continue
+        if now - _relink_miss.get(e.title, -_RELINK_TTL) < _RELINK_TTL:
+            continue
+        if e.title not in found:
+            found[e.title] = (await calendar_sync.find_anime(db, e.title))[0]
+            if found[e.title] is None:
+                _relink_miss[e.title] = now
+        if found[e.title]:
+            e.anime_id = found[e.title]
+            changed = True
+    if changed:
+        await db.commit()
 
 
 @router.get("")
@@ -47,6 +73,8 @@ async def get_calendar(week: int = Query(0, ge=-4, le=4), db: AsyncSession = Dep
             .order_by(CalendarEntry.release_at, CalendarEntry.title)
         )
     ).scalars().all()
+
+    await _relink(db, entries)
 
     anime_ids = {e.anime_id for e in entries if e.anime_id}
     posters: dict[int, str | None] = {}

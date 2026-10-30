@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { Check, CloudDownload, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { fetchEpisodeSizes } from "@/api/episodes";
+import { useIsApp } from "@/hooks/useIsApp";
+import { fmtSize } from "@/lib/fileSize";
+import { getWifiOnly, isOnWifi } from "@/lib/appPrefs";
 import { hasVideo } from "@/lib/offlineDb";
 import { useDownloadsStore } from "@/stores/downloads";
 import type { Episode } from "@/types";
@@ -9,6 +14,10 @@ interface Props {
   episode: Episode;
   animeTitle?: string;
   seasonLabel: string;
+  /** octets : number = connu, null = inconnu (le parent s'en charge), absent = le bouton le demande lui-même */
+  size?: number | null;
+  /** petit bouton pour les listes */
+  compact?: boolean;
 }
 
 /**
@@ -16,7 +25,8 @@ interface Props {
  * puis ajoute l'épisode à la file de téléchargement interne de l'app.
  * Visible uniquement quand l'épisode existe en fichier direct (ServCey 1).
  */
-export function OfflineDownloadButton({ episode, animeTitle, seasonLabel }: Props) {
+export function OfflineDownloadButton({ episode, animeTitle, seasonLabel, size, compact = false }: Props) {
+  const isApp = useIsApp();
   const enqueue = useDownloadsStore((s) => s.requestDownloads);
   const removeTask = useDownloadsStore((s) => s.removeTask);
   const retryTask = useDownloadsStore((s) => s.retryTask);
@@ -31,6 +41,14 @@ export function OfflineDownloadButton({ episode, animeTitle, seasonLabel }: Prop
     };
   }, [episode.id, task?.status]);
 
+  const { data: ownSizes } = useQuery({
+    queryKey: ["episode-size", episode.id],
+    queryFn: () => fetchEpisodeSizes([episode.id]),
+    enabled: isApp && size === undefined && episode.servcey1_available,
+    staleTime: 60 * 60_000,
+  });
+  const bytes = size === undefined ? ownSizes?.[episode.id] : (size ?? undefined);
+
   if (!episode.servcey1_available) return null;
 
   const onClick = async () => {
@@ -44,6 +62,10 @@ export function OfflineDownloadButton({ episode, animeTitle, seasonLabel }: Prop
     }
     if (task) {
       toast.info("Cet épisode est déjà dans la file de téléchargement.");
+      return;
+    }
+    if (isApp && getWifiOnly() && !isOnWifi()) {
+      toast.error("Tu n'es pas sur le Wi-Fi. Connecte-toi au Wi-Fi ou désactive « Wi-Fi seulement » (bandeau de la saison).");
       return;
     }
     await enqueue([
@@ -67,7 +89,13 @@ export function OfflineDownloadButton({ episode, animeTitle, seasonLabel }: Prop
     <button
       onClick={onClick}
       disabled={busy}
-      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface border border-border text-sm font-body font-semibold hover:border-primary/40 transition-colors disabled:opacity-60"
+      className={
+        (isApp && !done && !busy
+          ? "bg-primary text-primary-foreground border border-primary hover:bg-primary-dim "
+          : "bg-surface border border-border hover:border-primary/40 ") +
+        (compact ? "px-2.5 py-1.5 text-xs " : "px-3 py-2 text-sm ") +
+        "inline-flex items-center gap-1.5 rounded-lg font-body font-semibold transition-colors disabled:opacity-60"
+      }
     >
       {busy ? (
         <Loader2 className="w-4 h-4 animate-spin text-primary" />
@@ -84,7 +112,11 @@ export function OfflineDownloadButton({ episode, animeTitle, seasonLabel }: Prop
           ? "Disponible"
           : task?.status === "error"
             ? "Réessayer"
-            : "Hors ligne"}
+            : isApp
+              ? bytes
+                ? `Télécharger · ${fmtSize(bytes)}`
+                : "Télécharger"
+              : "Hors ligne"}
     </button>
     {busy && (
       <button

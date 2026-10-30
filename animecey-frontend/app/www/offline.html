@@ -6,68 +6,131 @@
   <title>Magi-Stream — Hors connexion</title>
   <style>
     :root{--bg:#0a0a0a;--card:#161616;--line:#2a2a2a;--fg:#f5f5f5;--mut:#9a9a9a;--pri:#f97316}
-    *{box-sizing:border-box}
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:20px 16px 40px}
     h1{font-size:22px;margin:8px 0 4px}
     p{color:var(--mut);font-size:14px;line-height:1.45;margin:0 0 16px}
     .row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 20px}
-    button{font:inherit;font-weight:700;border:0;border-radius:999px;padding:11px 18px;cursor:pointer}
+    button{font:inherit;font-weight:700;border:0;border-radius:999px;padding:11px 18px;cursor:pointer;color:inherit;background:none}
     .pri{background:var(--pri);color:#111}
-    .sec{background:var(--card);color:var(--fg);border:1px solid var(--line)}
     ul{list-style:none;margin:0;padding:0;display:grid;gap:10px}
     li{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;gap:10px;align-items:center}
-    li b{display:block;font-size:15px}
-    li span{color:var(--mut);font-size:12px}
+    li b{display:block;font-size:15px;line-height:1.3}
+    li span{display:block;color:var(--mut);font-size:12px;margin-top:2px}
     li .grow{flex:1;min-width:0}
-    li .grow b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    video{width:100%;max-height:60vh;background:#000;border-radius:16px;margin-bottom:16px}
+    li .bar{height:3px;border-radius:3px;background:#2a2a2a;margin-top:8px;overflow:hidden}
+    li .bar i{display:block;height:100%;background:var(--pri)}
     .empty{border:1px dashed var(--line);border-radius:16px;padding:24px;text-align:center;color:var(--mut)}
+
+    /* Lecteur plein écran */
+    #pl{position:fixed;inset:0;background:#000;z-index:10;display:none;touch-action:manipulation}
+    #pl.on{display:block}
+    #pl video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+    #ui{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;
+        background:linear-gradient(#000a,#0000 25%,#0000 65%,#000b);transition:opacity .2s;
+        padding:env(safe-area-inset-top) 12px env(safe-area-inset-bottom)}
+    #ui.hide{opacity:0;pointer-events:none}
+    #top{display:flex;align-items:center;gap:8px;padding-top:10px}
+    #ttl{flex:1;min-width:0;font-weight:700;font-size:14px;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    .ib{width:44px;height:44px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:#0006}
+    .ib svg{width:24px;height:24px;fill:#fff}
+    #mid{display:flex;align-items:center;justify-content:center;gap:28px}
+    #mid .big{width:64px;height:64px;background:var(--pri)}
+    #mid .big svg{fill:#111;width:32px;height:32px}
+    #bot{padding-bottom:10px}
+    #seekrow{display:flex;align-items:center;gap:10px;font-size:12px;font-variant-numeric:tabular-nums}
+    #seek{flex:1;accent-color:var(--pri);height:28px}
+    #brow{display:flex;justify-content:space-between;align-items:center;margin-top:2px}
+    #spd{font-size:13px;padding:8px 14px;background:#0006}
+    #resume{position:absolute;left:50%;bottom:90px;transform:translateX(-50%);background:#000c;border:1px solid var(--line);
+            padding:8px 14px;border-radius:999px;font-size:13px;display:none}
   </style>
 </head>
 <body>
   <h1>Vous êtes hors connexion</h1>
   <p>Regarde tes épisodes téléchargés, ou reconnecte-toi pour retrouver tout le catalogue.</p>
   <div class="row"><button class="pri" id="retry">Réessayer la connexion</button></div>
-  <video id="player" controls playsinline hidden></video>
   <ul id="list"></ul>
+
+  <div id="pl">
+    <video id="v" playsinline preload="metadata" disablepictureinpicture controlslist="nodownload noremoteplayback noplaybackrate"></video>
+    <div id="resume"></div>
+    <div id="ui">
+      <div id="top">
+        <button class="ib" id="close" aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12z"/></svg></button>
+        <div id="ttl"></div>
+      </div>
+      <div id="mid">
+        <button class="ib" id="back" aria-label="Reculer de 10 secondes"><svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg></button>
+        <button class="ib big" id="pp" aria-label="Lecture / pause"></button>
+        <button class="ib" id="fwd" aria-label="Avancer de 10 secondes"><svg viewBox="0 0 24 24"><path d="M12 5V1l5 5-5 5V7a6 6 0 1 0 6 6h2a8 8 0 1 1-8-8z"/></svg></button>
+      </div>
+      <div id="bot">
+        <div id="seekrow"><span id="cur">0:00</span><input id="seek" type="range" min="0" max="1000" value="0"><span id="dur">0:00</span></div>
+        <div id="brow">
+          <button id="spd">1×</button>
+          <button class="ib" id="fs" aria-label="Plein écran"><svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7zm-2-4h2V7h3V5H5zm12 7h-3v2h5v-5h-2zM14 5v2h3v3h2V5z"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
     var SITE = "https://www.magi-stream.online/";
-    document.getElementById("retry").onclick = function () { location.href = SITE; };
+    var $ = function (id) { return document.getElementById(id); };
+    $("retry").onclick = function () { location.href = SITE; };
     window.addEventListener("online", function () { location.href = SITE; });
 
     function fmt(b) { return b >= 1e9 ? (b / 1e9).toFixed(1) + " Go" : Math.round(b / 1e6) + " Mo"; }
+    function clock(t) {
+      t = Math.max(0, Math.floor(t || 0));
+      var h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
+      return (h ? h + ":" + (m < 10 ? "0" : "") : "") + m + ":" + (s < 10 ? "0" : "") + s;
+    }
 
+    /* ---------- Reprise de lecture ---------- */
+    function posKey(id) { return "magi:pos:" + id; }
+    function loadPos(id) { try { return JSON.parse(localStorage.getItem(posKey(id)) || "null"); } catch (e) { return null; } }
+    function savePos(id, t, d) {
+      try {
+        if (!d || t < 5) return;
+        if (t > d - 20) localStorage.removeItem(posKey(id)); // épisode terminé
+        else localStorage.setItem(posKey(id), JSON.stringify({ t: t, d: d }));
+      } catch (e) {}
+    }
+
+    /* ---------- Liste ---------- */
     function render(items) {
-      var ul = document.getElementById("list");
+      var ul = $("list");
       ul.innerHTML = "";
-      if (!items.length) {
-        ul.innerHTML = '<div class="empty">Aucun épisode téléchargé pour le moment.</div>';
-        return;
-      }
+      if (!items.length) { ul.innerHTML = '<div class="empty">Aucun épisode téléchargé pour le moment.</div>'; return; }
       items.forEach(function (it) {
         var meta = {};
         try { meta = JSON.parse(it.meta || "{}"); } catch (e) {}
+        var title = (meta.animeTitle || "Épisode") + " — Ép. " + (meta.episodeNumber || "?");
         var li = document.createElement("li");
-        var t = document.createElement("div");
-        t.className = "grow";
-        var b = document.createElement("b");
-        b.textContent = (meta.animeTitle || "Épisode") + " — Ép. " + (meta.episodeNumber || "?");
+        var t = document.createElement("div"); t.className = "grow";
+        var b = document.createElement("b"); b.textContent = title;
         var s = document.createElement("span");
         s.textContent = [meta.seasonLabel, meta.language, fmt(it.size || 0)].filter(Boolean).join(" · ");
         t.appendChild(b); t.appendChild(s);
+        var p = loadPos(it.episodeId);
+        if (p && p.d) {
+          var bar = document.createElement("div"); bar.className = "bar";
+          bar.innerHTML = "<i></i>"; bar.firstChild.style.width = Math.min(100, Math.round(100 * p.t / p.d)) + "%";
+          t.appendChild(bar);
+        }
         var play = document.createElement("button");
-        play.className = "pri"; play.textContent = "Regarder";
-        play.onclick = function () {
-          var v = document.getElementById("player");
-          v.src = fileUrl(it.path);
-          v.hidden = false; v.play(); window.scrollTo(0, 0);
-        };
+        play.className = "pri"; play.textContent = p ? "Reprendre" : "Regarder";
+        play.onclick = function () { openPlayer(it, title); };
         li.appendChild(t); li.appendChild(play);
         ul.appendChild(li);
       });
     }
 
-    // Lecture de la liste : d'abord l'interface fournie par l'application (MagiNative), puis le plugin Capacitor.
+    /* ---------- Accès natif ---------- */
+    function native(fn, arg) { try { if (window.MagiNative && window.MagiNative[fn]) window.MagiNative[fn](arg); } catch (e) {} }
+
     function readItems() {
       if (window.MagiNative && window.MagiNative.list) {
         try { return Promise.resolve(JSON.parse(window.MagiNative.list())); } catch (e) { return Promise.reject(e); }
@@ -84,7 +147,7 @@
     }
 
     function showMessage(text) {
-      document.getElementById("list").innerHTML = '<div class="empty"></div>';
+      $("list").innerHTML = '<div class="empty"></div>';
       document.querySelector("#list .empty").textContent = text;
     }
 
@@ -94,6 +157,88 @@
         showMessage("Impossible de lire les téléchargements : " + (e && e.message ? e.message : e));
       });
     }
+
+    /* ---------- Lecteur ---------- */
+    var v = $("v"), cur = null, hideTimer = null, lastSave = 0, full = false, scrubbing = false;
+    var SPEEDS = [1, 1.25, 1.5, 2, 0.75];
+    var PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+    var PAUSE = '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>';
+
+    function showUi() {
+      $("ui").classList.remove("hide");
+      clearTimeout(hideTimer);
+      if (!v.paused) hideTimer = setTimeout(function () { $("ui").classList.add("hide"); }, 3000);
+    }
+    function setFull(on) {
+      full = on;
+      native("setFullscreen", on); // paysage + barres système masquées (voir MainActivity)
+    }
+    function openPlayer(it, title) {
+      cur = it;
+      $("ttl").textContent = title;
+      $("pl").classList.add("on");
+      document.body.style.overflow = "hidden";
+      native("keepAwake", true);
+      v.src = fileUrl(it.path);
+      v.playbackRate = 1; $("spd").textContent = "1×";
+      var p = loadPos(it.episodeId);
+      v.onloadedmetadata = function () {
+        $("dur").textContent = clock(v.duration);
+        if (p && p.t > 5 && p.t < v.duration - 20) {
+          v.currentTime = p.t;
+          var r = $("resume"); r.textContent = "Reprise à " + clock(p.t); r.style.display = "block";
+          setTimeout(function () { r.style.display = "none"; }, 3000);
+        }
+        v.play().catch(function () {});
+      };
+      try { history.pushState({ p: 1 }, ""); } catch (e) {}
+      showUi();
+    }
+    function closePlayer(fromPop) {
+      if (!cur) return;
+      savePos(cur.episodeId, v.currentTime, v.duration);
+      v.pause(); v.removeAttribute("src"); v.load();
+      $("pl").classList.remove("on");
+      document.body.style.overflow = "";
+      if (full) setFull(false);
+      native("keepAwake", false);
+      cur = null;
+      if (!fromPop) { try { history.back(); } catch (e) {} }
+      load(0); // met à jour les barres de progression
+    }
+    window.addEventListener("popstate", function () { if (cur) closePlayer(true); });
+
+    $("close").onclick = function (e) { e.stopPropagation(); closePlayer(false); };
+    $("pp").onclick = function (e) { e.stopPropagation(); v.paused ? v.play() : v.pause(); showUi(); };
+    $("back").onclick = function (e) { e.stopPropagation(); v.currentTime = Math.max(0, v.currentTime - 10); showUi(); };
+    $("fwd").onclick = function (e) { e.stopPropagation(); v.currentTime = Math.min(v.duration || 0, v.currentTime + 10); showUi(); };
+    $("fs").onclick = function (e) { e.stopPropagation(); setFull(!full); showUi(); };
+    $("spd").onclick = function (e) {
+      e.stopPropagation();
+      var i = (SPEEDS.indexOf(v.playbackRate) + 1) % SPEEDS.length;
+      v.playbackRate = SPEEDS[i]; $("spd").textContent = SPEEDS[i] + "×"; showUi();
+    };
+    $("pl").onclick = function () { $("ui").classList.contains("hide") ? showUi() : $("ui").classList.add("hide"); };
+
+    $("seek").oninput = function () { scrubbing = true; $("cur").textContent = clock(v.duration * this.value / 1000); showUi(); };
+    $("seek").onchange = function () { v.currentTime = v.duration * this.value / 1000; scrubbing = false; };
+    $("seek").onclick = function (e) { e.stopPropagation(); };
+
+    v.addEventListener("play", function () { $("pp").innerHTML = PAUSE; showUi(); });
+    v.addEventListener("pause", function () { $("pp").innerHTML = PLAY; showUi(); if (cur) savePos(cur.episodeId, v.currentTime, v.duration); });
+    v.addEventListener("ended", function () { if (cur) { try { localStorage.removeItem(posKey(cur.episodeId)); } catch (e) {} } showUi(); });
+    v.addEventListener("timeupdate", function () {
+      if (!scrubbing && v.duration) {
+        $("seek").value = Math.round(1000 * v.currentTime / v.duration);
+        $("cur").textContent = clock(v.currentTime);
+      }
+      var now = Date.now();
+      if (cur && now - lastSave > 3000) { lastSave = now; savePos(cur.episodeId, v.currentTime, v.duration); }
+    });
+    v.addEventListener("error", function () { if (cur) { $("resume").textContent = "Lecture impossible : fichier introuvable."; $("resume").style.display = "block"; } });
+    $("pp").innerHTML = PLAY;
+    window.addEventListener("pagehide", function () { if (cur) savePos(cur.episodeId, v.currentTime, v.duration); });
+
     showMessage("Lecture des téléchargements…");
     load(0);
   </script>

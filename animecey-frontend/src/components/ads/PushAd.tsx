@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { MONETAG } from "@/config/ads";
+import { isNativeApp } from "@/lib/nativeDownloads";
 import { mountAdCode } from "@/lib/adCode";
 
 let loaded = false;
@@ -12,6 +13,8 @@ let loaded = false;
  */
 export function PushAd() {
   useEffect(() => {
+    // Dans l'application Android : pas de popunder ni de push web (ils sortiraient l'utilisateur de l'app)
+    if (isNativeApp()) return;
     const code = MONETAG.push.code.trim();
     if (!code || loaded) return;
     loaded = true;

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { MONETAG } from "@/config/ads";
+import { isNativeApp } from "@/lib/nativeDownloads";
 
 let loaded = false;
 
@@ -11,6 +12,8 @@ let loaded = false;
  */
 export function OnClickAd() {
   useEffect(() => {
+    // Dans l'application Android : pas de popunder ni de push web (ils sortiraient l'utilisateur de l'app)
+    if (isNativeApp()) return;
     const { zone, src } = MONETAG.onclick;
     if (!zone.trim() || loaded) return;
     loaded = true;

@@ -32,6 +32,7 @@ perms = [
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
     "android.permission.WAKE_LOCK",
+    "android.permission.ACCESS_NETWORK_STATE",
 ]
 add = "".join(f'    <uses-permission android:name="{p}" />\n' for p in perms if p not in xml)
 xml = xml.replace("<application", add + "    <application", 1) if add else xml

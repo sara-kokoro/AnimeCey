@@ -19,6 +19,7 @@ import { BottomNav } from "@/components/layout/BottomNav";
 import { DownloadAdModal } from "@/components/ads/DownloadAdModal";
 import { registerAppSw } from "@/lib/pwaRegister";
 import { syncNativeDownloads } from "@/stores/downloads";
+import { UpdateNotice } from "@/components/UpdateNotice";
 
 function NotFoundComponent() {
   return (
@@ -151,6 +152,7 @@ function RootComponent() {
         </div>
         <BottomNav />
         <DownloadAdModal />
+        <UpdateNotice />
       </TooltipProvider>
     </QueryClientProvider>
   );

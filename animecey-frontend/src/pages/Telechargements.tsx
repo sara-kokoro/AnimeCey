@@ -223,56 +223,57 @@ export default function Telechargements() {
               </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <ul className="space-y-2.5">
               {videos.map((v) => (
-                <div
+                <li
                   key={v.episodeId}
-                  className="rounded-3xl bg-surface border border-border-subtle overflow-hidden hover:border-primary/40 transition-colors"
+                  className="flex items-center gap-3 rounded-2xl bg-surface border border-border-subtle p-2.5 hover:border-primary/40 transition-colors"
                 >
-                  <button onClick={() => play(v)} className="relative block w-full aspect-video bg-foreground/5">
+                  <button
+                    onClick={() => play(v)}
+                    aria-label={`Regarder ${v.animeTitle}`}
+                    className="relative shrink-0 w-24 sm:w-28 aspect-video rounded-xl overflow-hidden bg-foreground/5"
+                  >
                     {v.thumbnailUrl ? (
                       <img src={v.thumbnailUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                        <Play className="w-10 h-10" />
+                        <Play className="w-6 h-6" />
                       </div>
                     )}
-                    <span className="absolute -bottom-4 left-2 font-display font-black text-8xl leading-none text-foreground/20 pointer-events-none">
-                      {v.episodeNumber}
-                    </span>
-                    <span className="absolute top-2 right-2 px-2 py-1 rounded-md bg-background/80 text-xs font-bold">
-                      {v.language}
-                    </span>
-                    <span className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-glow">
-                      <Play className="w-7 h-7 fill-current" />
+                    <span className="absolute inset-0 m-auto w-8 h-8 rounded-full bg-primary/90 text-primary-foreground flex items-center justify-center">
+                      <Play className="w-4 h-4 fill-current" />
                     </span>
                   </button>
-                  <div className="p-4">
-                    <p className="font-display text-lg font-bold truncate">{v.animeTitle}</p>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {v.seasonLabel} · Épisode {v.episodeNumber} · {fmtSize(v.size)}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display text-[15px] font-bold leading-snug line-clamp-2">{v.animeTitle}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {v.seasonLabel} · Épisode {v.episodeNumber}
                     </p>
-                    <div className="mt-4 flex items-center gap-2">
-                      <button
-                        onClick={() => play(v)}
-                        className="flex-1 inline-flex items-center justify-center gap-2 h-11 rounded-full bg-primary text-primary-foreground font-bold hover:bg-primary-dim transition-colors"
-                      >
-                        <Play className="w-4 h-4" />
-                        Regarder
-                      </button>
-                      <button
-                        onClick={() => void remove(v.episodeId)}
-                        aria-label="Supprimer"
-                        className="w-11 h-11 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-highlight hover:border-highlight/60 transition-colors"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                      {playing?.episodeId === v.episodeId && <Check className="w-5 h-5 text-primary" />}
-                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {v.language} · {fmtSize(v.size)}
+                    </p>
                   </div>
-                </div>
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    <button
+                      onClick={() => play(v)}
+                      className="inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-bold hover:bg-primary-dim transition-colors"
+                    >
+                      <Play className="w-4 h-4" />
+                      <span className="hidden sm:inline">Regarder</span>
+                    </button>
+                    <button
+                      onClick={() => void remove(v.episodeId)}
+                      aria-label="Supprimer"
+                      className="w-10 h-10 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-highlight hover:border-highlight/60 transition-colors"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                    {playing?.episodeId === v.episodeId && <Check className="w-5 h-5 text-primary" />}
+                  </div>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </section>
       </div>

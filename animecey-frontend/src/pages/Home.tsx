@@ -18,6 +18,8 @@ import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import { SocialBarAd } from "@/components/ads/SocialBarAd";
 import { PushAd } from "@/components/ads/PushAd";
+import { ClickadillaAd } from "@/components/ads/ClickadillaAd";
+import { ClickadillaBanner } from "@/components/ads/ClickadillaBanner";
 import { AppDownloadButton } from "@/components/AppDownloadButton";
 import { fetchAnimes, fetchLiveHome, fetchTopWeek, fetchTopRated, fetchLatest, fetchTrending } from "@/api/animes";
 import type { Anime } from "@/types";
@@ -99,6 +101,7 @@ export default function Home() {
       <main className="mx-auto max-w-7xl px-3 md:px-6">
         <SocialBarAd />
         <PushAd />
+        <ClickadillaAd />
         <AppDownloadButton />
 
         <nav aria-label="Sections" className="mt-2 flex gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 md:mx-0 md:px-0">
@@ -124,6 +127,7 @@ export default function Home() {
         <LatestReleasesRail />
 
         <AdsterraBanner format="banner" className="mt-4 mb-2" />
+        <ClickadillaBanner className="my-2" />
         <div id="animes" className="scroll-mt-24" />
 
 

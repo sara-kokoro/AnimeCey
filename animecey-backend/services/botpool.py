@@ -427,6 +427,23 @@ class BotPool:
 
         raise PoolUnavailable(str(last_exc) if last_exc else "aucun bot Telegram disponible")
 
+    async def file_size(self, msg_id: int) -> int:
+        """Taille (octets) du fichier d'un message du canal, sans lire la vidéo. 0 si introuvable."""
+        fs = _filestream()
+        tried: set[int] = set()
+        for _ in range(MAX_TRIES):
+            h = self._next(tried)
+            if h is None:
+                break
+            tried.add(h.index)
+            try:
+                msg = await self._get_message(h, msg_id)
+                media = fs.get_media_from_message(msg) if msg else None
+                return int(getattr(media, "file_size", 0) or 0) if media else 0
+            except Exception as exc:  # noqa: BLE001
+                self._penalize(h, exc, msg_id)
+        return 0
+
     # ---- état -----------------------------------------------------------------------
 
     def status_text(self) -> str:

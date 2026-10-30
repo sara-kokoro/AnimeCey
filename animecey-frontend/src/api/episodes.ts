@@ -23,6 +23,15 @@ export async function getStreamUrl(
   return res.data;
 }
 
+/** Taille des fichiers (octets) par identifiant d'épisode ; les tailles inconnues sont absentes. */
+export async function fetchEpisodeSizes(ids: number[]): Promise<Record<number, number>> {
+  if (ids.length === 0) return {};
+  const res = await api.get("/episodes/sizes", { params: { ids: ids.slice(0, 50).join(",") } });
+  const out: Record<number, number> = {};
+  for (const [k, v] of Object.entries(res.data as Record<string, number>)) out[Number(k)] = v;
+  return out;
+}
+
 export async function fetchLikeStatus(id: number) {
   const res = await api.get(`/episodes/${id}/like`);
   return res.data as { liked: boolean; likes_count: number };

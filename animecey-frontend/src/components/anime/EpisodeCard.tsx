@@ -2,6 +2,8 @@ import { Link } from "@/lib/router";
 import { Clock, Heart, MessageCircle, Play } from "lucide-react";
 import type { Episode } from "@/types";
 import { cn } from "@/lib/utils";
+import { useIsApp } from "@/hooks/useIsApp";
+import { OfflineDownloadButton } from "@/components/player/OfflineDownloadButton";
 
 interface Props {
   episode: Episode;
@@ -14,6 +16,10 @@ interface Props {
   seasonLabel?: string;
   anime?: unknown;
   index?: number;
+  /** Dans l'application : affiche le bouton « Télécharger » avec la taille du fichier. */
+  animeTitle?: string;
+  /** octets si connus, null si inconnus */
+  size?: number | null;
 }
 
 export function EpisodeCard({
@@ -23,7 +29,10 @@ export function EpisodeCard({
   compact = false,
   variant = "row",
   seasonLabel,
+  animeTitle,
+  size,
 }: Props) {
+  const isApp = useIsApp();
   const where = seasonLabel ?? `Saison ${episode.season_number}`;
   const minutes = episode.duration ? Math.max(1, Math.round(episode.duration / 60)) : null;
   if (variant === "grid") {
@@ -149,6 +158,23 @@ export function EpisodeCard({
             {episode.comments_count}
           </span>
         </div>
+        {isApp && animeTitle && (
+          <div
+            className="mt-2"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            <OfflineDownloadButton
+              episode={episode}
+              animeTitle={animeTitle}
+              seasonLabel={where}
+              size={size ?? null}
+              compact
+            />
+          </div>
+        )}
       </div>
     </Link>
   );

@@ -12,7 +12,9 @@ import { AnimeGrid } from "@/components/anime/AnimeGrid";
 import { fetchAnime, fetchSimilar } from "@/api/animes";
 import { AnimeCredits } from "@/components/anime/AnimeCredits";
 import { Seo } from "@/components/Seo";
-import { fetchEpisodes } from "@/api/episodes";
+import { fetchEpisodes, fetchEpisodeSizes } from "@/api/episodes";
+import { SeasonDownloadBar } from "@/components/anime/SeasonDownloadBar";
+import { useIsApp } from "@/hooks/useIsApp";
 import { ensureSeason, fetchSeasonLabels } from "@/api/catalog";
 import { addFavorite, fetchFavorites, removeFavorite } from "@/api/users";
 import { useAuthStore } from "@/stores/auth";
@@ -20,6 +22,7 @@ import { ReportButton } from "@/components/report/ReportButton";
 import { SocialBarAd } from "@/components/ads/SocialBarAd";
 import { OnClickAd } from "@/components/ads/OnClickAd";
 import { PushAd } from "@/components/ads/PushAd";
+import { ClickadillaAd } from "@/components/ads/ClickadillaAd";
 import type { Language } from "@/types";
 
 export default function AnimeDetail() {
@@ -69,6 +72,15 @@ export default function AnimeDetail() {
     queryFn: () => fetchEpisodes(Number(id), lang, season),
     enabled: !!anime,
     refetchInterval: preparing ? 6000 : false,
+  });
+
+  // Tailles des fichiers : seulement dans l'application (affichées sur les boutons « Télécharger »)
+  const isApp = useIsApp();
+  const { data: sizes = {} } = useQuery({
+    queryKey: ["episode-sizes", Number(id), lang, season, episodes.length],
+    queryFn: () => fetchEpisodeSizes(episodes.filter((e) => e.servcey1_available).map((e) => e.id)),
+    enabled: isApp && episodes.length > 0,
+    staleTime: 60 * 60_000,
   });
 
   // Saison pas encore récupérée : on demande sa préparation, puis la liste se rafraîchit seule.
@@ -258,6 +270,7 @@ export default function AnimeDetail() {
         <SocialBarAd />
         <OnClickAd />
         <PushAd />
+        <ClickadillaAd />
 
         <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-background/90 backdrop-blur-xl">
           <div className="flex gap-1 p-1 rounded-full bg-surface border border-border-subtle w-fit max-w-full overflow-x-auto no-scrollbar mx-auto">
@@ -359,15 +372,26 @@ export default function AnimeDetail() {
                   : "Aucun épisode disponible."}
               </p>
             ) : (
+              <>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 min-w-0">
                 {sorted.map((ep) => (
                   <EpisodeCard
                     key={ep.id}
                     episode={ep}
                     seasonLabel={seasonLabels.find((s) => s.number === ep.season_number)?.label}
+                    animeTitle={anime.title}
+                    size={sizes[ep.id] ?? null}
                   />
                 ))}
               </div>
+              <SeasonDownloadBar
+                episodes={episodes}
+                animeTitle={anime.title}
+                seasonNumber={season}
+                seasonLabel={seasonLabels.find((s) => s.number === season)?.label ?? `Saison ${season}`}
+                sizes={sizes}
+              />
+              </>
             )}
           </div>
         )}

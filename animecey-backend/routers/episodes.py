@@ -152,6 +152,38 @@ async def list_episodes(
     return [EpisodePublic.model_validate(ep) for ep in episodes]
 
 
+_size_cache: dict[int, int] = {}
+
+
+@router.get("/sizes")
+async def episode_sizes(
+    ids: str = Query(..., description="identifiants d'épisodes séparés par des virgules (50 maximum)"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Taille des fichiers (octets) pour afficher « 228 Mo » avant un téléchargement.
+
+    Réponse : {"<id>": octets}. Les épisodes dont la taille est inconnue sont absents.
+    La taille est lue une seule fois dans Telegram puis gardée en mémoire.
+    """
+    from services import botpool
+
+    wanted = [int(p) for p in ids.split(",")[:50] if p.strip().isdigit()]
+    todo = [i for i in wanted if i not in _size_cache]
+    if todo:
+        rows = (await db.execute(select(Episode.id, Episode.servcey1_msg_id).where(Episode.id.in_(todo)))).all()
+        for eid, msg_id in rows:
+            if not msg_id:
+                continue
+            try:
+                size = await botpool.pool.file_size(msg_id)
+            except Exception as exc:  # noqa: BLE001
+                logger.info("Taille de l'épisode %s indisponible : %s", eid, exc)
+                continue
+            if size:
+                _size_cache[eid] = size
+    return {str(i): _size_cache[i] for i in wanted if i in _size_cache}
+
+
 @router.get("/{episode_id}", response_model=EpisodePublic)
 async def get_episode(episode_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Episode).where(Episode.id == episode_id))
