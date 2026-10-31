@@ -8,6 +8,8 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -22,7 +24,18 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.IOException;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLongArray;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Set;
@@ -35,6 +48,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Service de téléchargement en arrière-plan.
  * - un épisode à la fois, les autres attendent leur tour ;
  * - notification de progression avec bouton « Annuler », puis notification « terminé » ;
+ * - vitesse : un épisode est téléchargé en 4 morceaux EN MÊME TEMPS (4 connexions), chacun écrit à sa place dans le fichier ;
  * - reprise : un fichier .part déjà commencé continue là où il s'est arrêté (en-tête Range) ;
  * - l'adresse de la vidéo est redemandée au serveur juste avant chaque téléchargement (elle expire).
  */
@@ -45,6 +59,10 @@ public class DownloadService extends Service {
     private static final String CH_PROGRESS = "magi_downloads";
     private static final String CH_DONE = "magi_done";
     private static final int FG_ID = 1001;
+    /** Nombre de connexions simultanées pour un épisode. */
+    private static final int SEGMENTS = 4;
+    /** En dessous de cette taille, une seule connexion suffit. */
+    private static final long MIN_SEGMENTED = 8L * 1024 * 1024;
 
     static volatile boolean running = false;
     private static final Set<Integer> CANCELLED = ConcurrentHashMap.newKeySet();
@@ -66,6 +84,8 @@ public class DownloadService extends Service {
         DownloadStore.finalFile(c, id).delete();
         //noinspection ResultOfMethodCallIgnored
         DownloadStore.partFile(c, id).delete();
+        //noinspection ResultOfMethodCallIgnored
+        new File(DownloadStore.partFile(c, id).getPath() + ".seg").delete();
     }
 
     private static void cleanupCancelled(Context c, int id) {
@@ -179,6 +199,27 @@ public class DownloadService extends Service {
             String videoUrl = resolveVideoUrl(apiBase, id);
 
             long offset = part.exists() ? part.length() : 0;
+            File seg = segFile(part);
+            if (seg.exists()) {
+                // reprise d'un téléchargement en plusieurs morceaux
+                long known = readSegTotal(seg);
+                if (known > 0 && part.exists() && part.length() == known) {
+                    downloadSegmented(id, videoUrl, known, title, subtitle, part, seg);
+                    return;
+                }
+                //noinspection ResultOfMethodCallIgnored
+                seg.delete();
+                //noinspection ResultOfMethodCallIgnored
+                part.delete();
+                offset = 0;
+            }
+            if (offset == 0) {
+                long total = probeSize(videoUrl);
+                if (total >= MIN_SEGMENTED) {
+                    downloadSegmented(id, videoUrl, total, title, subtitle, part, seg);
+                    return;
+                }
+            }
             conn = open(videoUrl, offset);
             int code = conn.getResponseCode();
             if (code == 416 && offset > 0) {
@@ -230,6 +271,195 @@ public class DownloadService extends Service {
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    /* ───────── Téléchargement en plusieurs connexions ───────── */
+
+    private static File segFile(File part) {
+        return new File(part.getPath() + ".seg");
+    }
+
+    /** Taille totale du fichier (requête Range 0-0), ou -1 si le serveur ne la donne pas. */
+    private long probeSize(String url) {
+        HttpURLConnection c = null;
+        try {
+            c = open(url, 0);
+            c.setRequestProperty("Range", "bytes=0-0");
+            if (c.getResponseCode() != 206) return -1;
+            String cr = c.getHeaderField("Content-Range"); // « bytes 0-0/123456 »
+            if (cr == null) return -1;
+            int slash = cr.lastIndexOf('/');
+            return slash < 0 ? -1 : Long.parseLong(cr.substring(slash + 1).trim());
+        } catch (Exception e) {
+            return -1;
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    private static long readSegTotal(File seg) {
+        try {
+            List<String> lines = Files.readAllLines(seg.toPath(), StandardCharsets.UTF_8);
+            return lines.isEmpty() ? -1 : Long.parseLong(lines.get(0).trim());
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private static void writeSeg(File seg, long total, AtomicLongArray done) {
+        StringBuilder sb = new StringBuilder().append(total).append('\n');
+        for (int i = 0; i < done.length(); i++) sb.append(i == 0 ? "" : ",").append(done.get(i));
+        try {
+            Files.write(seg.toPath(), sb.toString().getBytes(StandardCharsets.UTF_8));
+        } catch (IOException ignored) {
+            // la reprise repartira simplement du début
+        }
+    }
+
+    private void downloadSegmented(final int id, final String url, final long total, String title, String subtitle,
+                                   final File part, File seg) throws Exception {
+        final long segLen = (total + SEGMENTS - 1) / SEGMENTS;
+        final long[] start = new long[SEGMENTS];
+        final long[] end = new long[SEGMENTS];
+        final AtomicLongArray done = new AtomicLongArray(SEGMENTS);
+        for (int i = 0; i < SEGMENTS; i++) {
+            start[i] = i * segLen;
+            end[i] = Math.min(total, (i + 1) * segLen) - 1;
+        }
+        boolean resume = false;
+        if (seg.exists() && part.exists() && part.length() == total) {
+            try {
+                List<String> lines = Files.readAllLines(seg.toPath(), StandardCharsets.UTF_8);
+                String[] parts = lines.get(1).split(",");
+                for (int i = 0; i < SEGMENTS && i < parts.length; i++) {
+                    long size = Math.max(0, end[i] - start[i] + 1);
+                    done.set(i, Math.min(size, Math.max(0, Long.parseLong(parts[i].trim()))));
+                }
+                resume = true;
+            } catch (Exception e) {
+                resume = false;
+            }
+        }
+        if (!resume) {
+            for (int i = 0; i < SEGMENTS; i++) done.set(i, 0);
+            try (RandomAccessFile raf = new RandomAccessFile(part, "rw")) {
+                raf.setLength(total);
+            }
+            writeSeg(seg, total, done);
+        }
+
+        final AtomicBoolean abort = new AtomicBoolean(false);
+        ExecutorService pool = Executors.newFixedThreadPool(SEGMENTS);
+        List<Future<Void>> futures = new ArrayList<>();
+        boolean complete = false;
+        try {
+            for (int i = 0; i < SEGMENTS; i++) {
+                final int idx = i;
+                futures.add(pool.submit(new Callable<Void>() {
+                    @Override
+                    public Void call() throws Exception {
+                        downloadSegment(id, url, part, idx, start[idx], end[idx], done, abort);
+                        return null;
+                    }
+                }));
+            }
+            long lastTick = 0;
+            long lastSave = 0;
+            while (true) {
+                boolean allDone = true;
+                for (Future<Void> f : futures) {
+                    if (!f.isDone()) {
+                        allDone = false;
+                    } else {
+                        try {
+                            f.get();
+                        } catch (ExecutionException ee) {
+                            Throwable cause = ee.getCause();
+                            throw cause instanceof Exception ? (Exception) cause : new Exception(cause);
+                        }
+                    }
+                }
+                if (CANCELLED.contains(id) || Thread.currentThread().isInterrupted()) {
+                    abort.set(true);
+                    pool.shutdownNow();
+                    //noinspection ResultOfMethodCallIgnored
+                    seg.delete();
+                    cleanupCancelled(this, id);
+                    return;
+                }
+                long received = 0;
+                for (int i = 0; i < SEGMENTS; i++) received += done.get(i);
+                long now = System.currentTimeMillis();
+                if (now - lastTick > 600) {
+                    lastTick = now;
+                    int pct = (int) Math.min(99, received * 100 / total);
+                    progress(id, received, pct);
+                    showForeground(buildProgress(title, subtitle, pct, id));
+                }
+                if (now - lastSave > 2500) {
+                    lastSave = now;
+                    writeSeg(seg, total, done);
+                }
+                if (allDone) {
+                    if (received < total) throw new Exception("Connexion interrompue. Appuie sur « Réessayer » pour reprendre.");
+                    complete = true;
+                    break;
+                }
+                Thread.sleep(300);
+            }
+        } catch (Exception e) {
+            abort.set(true);
+            writeSeg(seg, total, done); // garde ce qui est déjà reçu pour « Réessayer »
+            throw e;
+        } finally {
+            pool.shutdownNow();
+        }
+        if (complete) {
+            //noinspection ResultOfMethodCallIgnored
+            seg.delete();
+            finish(id, part, total, title);
+        }
+    }
+
+    /** Un morceau : demande sa plage d'octets et l'écrit à sa place ; réessaie 3 fois si la connexion coupe. */
+    private void downloadSegment(int id, String url, File part, int idx, long start, long end,
+                                 AtomicLongArray done, AtomicBoolean abort) throws Exception {
+        final long size = end - start + 1;
+        if (size <= 0) return;
+        Exception last = null;
+        for (int attempt = 0; attempt < 4; attempt++) {
+            if (done.get(idx) >= size) return;
+            HttpURLConnection c = null;
+            try {
+                long from = start + done.get(idx);
+                c = open(url, 0);
+                c.setRequestProperty("Range", "bytes=" + from + "-" + end);
+                int code = c.getResponseCode();
+                if (code != 206) throw new IOException("Serveur indisponible (HTTP " + code + ")");
+                try (InputStream in = c.getInputStream(); RandomAccessFile raf = new RandomAccessFile(part, "rw")) {
+                    raf.seek(from);
+                    byte[] buf = new byte[128 * 1024];
+                    int n;
+                    while ((n = in.read(buf)) != -1) {
+                        if (abort.get() || CANCELLED.contains(id) || Thread.currentThread().isInterrupted()) return;
+                        int w = (int) Math.min(n, size - done.get(idx));
+                        if (w <= 0) break;
+                        raf.write(buf, 0, w);
+                        done.addAndGet(idx, w);
+                        if (done.get(idx) >= size) break;
+                    }
+                }
+                if (done.get(idx) >= size) return;
+                last = new IOException("Flux coupé avant la fin");
+            } catch (IOException e) {
+                last = e;
+            } finally {
+                if (c != null) c.disconnect();
+            }
+            if (abort.get()) return;
+            Thread.sleep(1500L * (attempt + 1));
+        }
+        throw last != null ? last : new IOException("Connexion interrompue");
     }
 
     private String resolveVideoUrl(String apiBase, int id) throws Exception {
@@ -318,11 +548,29 @@ public class DownloadService extends Service {
         return PendingIntent.getActivity(this, 0, launch, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
     }
 
+    /** Icône monochrome Magi-Stream (le « M »), créée au build ; icône du système en secours. */
+    private int smallIcon(int fallback) {
+        int res = getResources().getIdentifier("ic_stat_magi", "drawable", getPackageName());
+        return res != 0 ? res : fallback;
+    }
+
+    /** Logo en couleur affiché dans la notification. */
+    private Bitmap largeIcon() {
+        try {
+            int res = getResources().getIdentifier("ic_launcher", "mipmap", getPackageName());
+            return res != 0 ? BitmapFactory.decodeResource(getResources(), res) : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private Notification buildProgress(String title, String text, int pct, int id) {
         int waiting = Math.max(0, queued.get() - 1);
         String content = waiting > 0 ? text + " · " + waiting + " en attente" : text;
         NotificationCompat.Builder b = new NotificationCompat.Builder(this, CH_PROGRESS)
-                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setSmallIcon(smallIcon(android.R.drawable.stat_sys_download))
+                .setLargeIcon(largeIcon())
+                .setColor(0xFFF97316)
                 .setContentTitle(title)
                 .setContentText(pct >= 0 ? pct + " % · " + content : content)
                 .setOngoing(true)
@@ -350,7 +598,9 @@ public class DownloadService extends Service {
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
         Notification n = new NotificationCompat.Builder(this, CH_DONE)
-                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                .setSmallIcon(smallIcon(android.R.drawable.stat_sys_download_done))
+                .setLargeIcon(largeIcon())
+                .setColor(0xFFF97316)
                 .setContentTitle(title)
                 .setContentText(text)
                 .setAutoCancel(true)

@@ -5,7 +5,7 @@
  * - wallets : adresses de dons (une par réseau). Les mêmes adresses sont dans app/www/offline.html.
  */
 export const SOCIAL = {
-  telegram: ((import.meta.env.VITE_TELEGRAM_URL as string | undefined) ?? "").trim(),
+  telegram: ((import.meta.env.VITE_TELEGRAM_URL as string | undefined) ?? "https://t.me/MagiStream").trim(),
 };
 
 export interface Wallet {

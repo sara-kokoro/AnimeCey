@@ -52,6 +52,18 @@ if icon.exists():
         for name in ("ic_launcher.png", "ic_launcher_round.png", "ic_launcher_foreground.png"):
             subprocess.run(["convert", str(icon), "-resize", f"{px}x{px}", str(d / name)], check=True)
 
+# 3b. Icône de notification : le « M » en blanc sur fond transparent (Android n'accepte que du monochrome)
+if icon.exists():
+    for dens, px in {"mdpi": 24, "hdpi": 36, "xhdpi": 48, "xxhdpi": 72, "xxxhdpi": 96}.items():
+        d = res / f"drawable-{dens}"
+        d.mkdir(parents=True, exist_ok=True)
+        mask = d / "_mask.png"
+        subprocess.run(["convert", str(icon), "-alpha", "off", "-colorspace", "Gray", "-level", "20%,50%",
+                        "-resize", f"{px}x{px}", str(mask)], check=True)
+        subprocess.run(["convert", "-size", f"{px}x{px}", "xc:white", str(mask), "-alpha", "off",
+                        "-compose", "CopyOpacity", "-composite", str(d / "ic_stat_magi.png")], check=True)
+        mask.unlink()
+
 # 4. Version
 g = gradle.read_text(encoding="utf-8")
 g = re.sub(r"versionCode\s+\d+", f"versionCode {int(build)}", g, count=1)
