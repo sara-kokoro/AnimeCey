@@ -76,7 +76,8 @@ export function SelectionDownloadBar({
           </span>
         </button>
       </div>
-      <label className="mt-2 flex items-center gap-2 text-xs text-muted-foreground select-none">
+      <p className="mt-2 text-[11px] text-muted-foreground">Une courte pub vidéo s'affiche avant le téléchargement.</p>
+      <label className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground select-none">
         <input
           type="checkbox"
           checked={wifiOnly}

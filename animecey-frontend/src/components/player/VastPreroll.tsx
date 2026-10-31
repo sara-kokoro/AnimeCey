@@ -2,13 +2,21 @@ import { useEffect, useRef, useState } from "react";
 import { loadVast, ping, type VastAd } from "@/lib/vast";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const MAX_WAIT_MS = 6000;
+const DEFAULT_WAIT_MS = 5000;
 
 /**
  * Pub vidéo VAST affichée avant l'épisode (application seulement).
- * Si la pub ne charge pas en 6 secondes ou échoue, elle disparaît et l'épisode démarre.
+ * Si la pub ne charge pas à temps ou échoue, elle disparaît et l'épisode démarre.
  */
-export function VastPreroll({ url, onDone }: { url: string; onDone: () => void }) {
+export function VastPreroll({
+  url,
+  onDone,
+  maxWaitMs = DEFAULT_WAIT_MS,
+}: {
+  url: string;
+  onDone: () => void;
+  maxWaitMs?: number;
+}) {
   const [ad, setAd] = useState<VastAd | null>(null);
   const [left, setLeft] = useState<number | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -23,7 +31,7 @@ export function VastPreroll({ url, onDone }: { url: string; onDone: () => void }
 
   useEffect(() => {
     let cancelled = false;
-    const timeout = window.setTimeout(finish, MAX_WAIT_MS);
+    const timeout = window.setTimeout(finish, maxWaitMs);
     loadVast(url)
       .then((a) => {
         if (cancelled) return;
@@ -95,7 +103,7 @@ export function VastPreroll({ url, onDone }: { url: string; onDone: () => void }
           (window as any).MagiNative?.openExternal?.(ad.clickUrl);
         }}
       />
-      <span className="absolute top-2 left-2 rounded bg-black/70 px-2 py-0.5 text-[11px] text-white">Publicité</span>
+      <span className="absolute top-2 left-2 rounded bg-black/70 px-2 py-0.5 text-[11px] text-white">Publicité · la suite démarre après</span>
       <button
         onClick={() => {
           if (!canSkip) return;

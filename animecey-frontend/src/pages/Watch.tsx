@@ -14,8 +14,6 @@ import { useDownloadsStore } from "@/stores/downloads";
 import { VignetteAd } from "@/components/ads/VignetteAd";
 import { OnClickAd } from "@/components/ads/OnClickAd";
 import { PushAd } from "@/components/ads/PushAd";
-import { ClickadillaAd } from "@/components/ads/ClickadillaAd";
-import { ClickadillaBanner } from "@/components/ads/ClickadillaBanner";
 import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
@@ -234,7 +232,6 @@ export default function Watch() {
       <VignetteAd />
       <OnClickAd />
       <PushAd />
-      <ClickadillaAd />
 
       <div className="pt-16 mx-auto max-w-6xl md:px-6">
         <div className="relative w-full aspect-video bg-background md:rounded-2xl overflow-hidden md:mt-4 ring-1 ring-border">
@@ -454,7 +451,6 @@ export default function Watch() {
           </section>
 
           <AdsterraBanner format="native" className="mt-8" />
-          <ClickadillaBanner className="mt-4" />
 
           <div className="mt-8">
             <CommentSection episodeId={episode.id} />

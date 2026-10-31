@@ -15,7 +15,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CLICKADILLA } from "@/config/ads";
+import { ONCLICKA } from "@/config/ads";
 import { useIsApp } from "@/hooks/useIsApp";
 import { VastPreroll } from "@/components/player/VastPreroll";
 
@@ -112,7 +112,7 @@ export function ServCeyPlayer({
   // La décision se prend une seule fois, quand on sait si on est dans l'application
   useEffect(() => {
     if (adDone || adOn) return;
-    if (!preroll || !CLICKADILLA.vast.trim()) return void setAdDone(true);
+    if (!preroll || !ONCLICKA.vast.trim()) return void setAdDone(true);
     if (!isApp) return; // useIsApp passe à true après le premier rendu dans l'application
     let last = 0;
     try {
@@ -468,7 +468,7 @@ export function ServCeyPlayer({
         className="absolute inset-0 w-full h-full object-contain bg-black"
       />
 
-      {adOn && <VastPreroll url={CLICKADILLA.vast} onDone={endAd} />}
+      {adOn && <VastPreroll url={ONCLICKA.vast} onDone={endAd} />}
 
       {/* Surface cliquable */}
       <div className="absolute inset-0" onClick={onSurfaceClick} />

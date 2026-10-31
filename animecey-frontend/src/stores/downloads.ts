@@ -12,7 +12,7 @@ import api from "@/api/axios";
 import { getStreamUrl } from "@/api/episodes";
 import { CHUNK_SIZE, deleteVideo, getPartial, hasVideo, putChunk, saveVideo } from "@/lib/offlineDb";
 import { isNativeApp, nativePlugin, type NativeItem } from "@/lib/nativeDownloads";
-import { RICHADS } from "@/config/ads";
+import { ONCLICKA, RICHADS } from "@/config/ads";
 
 export interface DownloadTask {
   episodeId: number;
@@ -61,7 +61,9 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
   requestDownloads: async (items) => {
     if (get().adBatch) throw new Error("Une publicité de téléchargement est déjà ouverte.");
     if (!navigator.onLine) throw new Error("Reconnecte-toi pour télécharger des épisodes.");
-    if (!RICHADS.vastTag.trim()) return get().enqueue(items); // pas de pub configurée : téléchargement direct
+    // Application : pub vidéo OnClicka. Site : pub RichAds si elle est configurée. Sans pub : téléchargement direct.
+    const adConfigured = isNativeApp() ? !!ONCLICKA.vast.trim() : !!RICHADS.vastTag.trim();
+    if (!adConfigured) return get().enqueue(items);
     // Réserver le lot avant les lectures IndexedDB pour éviter deux demandes simultanées.
     const id = ++batchSequence;
     set({ adBatch: { id, items: [] } });
