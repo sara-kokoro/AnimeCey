@@ -1,5 +1,5 @@
 import { Link } from "@/lib/router";
-import { Clock, Heart, MessageCircle, Play } from "lucide-react";
+import { Check, Clock, Heart, MessageCircle, Play } from "lucide-react";
 import type { Episode } from "@/types";
 import { cn } from "@/lib/utils";
 import { useIsApp } from "@/hooks/useIsApp";
@@ -20,6 +20,10 @@ interface Props {
   animeTitle?: string;
   /** octets si connus, null si inconnus */
   size?: number | null;
+  /** Mode « choisir les épisodes à télécharger » : un tap coche/décoche au lieu d'ouvrir l'épisode. */
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggle?: () => void;
 }
 
 export function EpisodeCard({
@@ -31,6 +35,9 @@ export function EpisodeCard({
   seasonLabel,
   animeTitle,
   size,
+  selectMode = false,
+  selected = false,
+  onToggle,
 }: Props) {
   const isApp = useIsApp();
   const where = seasonLabel ?? `Saison ${episode.season_number}`;
@@ -87,7 +94,14 @@ export function EpisodeCard({
   return (
     <Link
       to={`/watch/${episode.id}`}
+      onClick={(e) => {
+        if (selectMode) {
+          e.preventDefault();
+          onToggle?.();
+        }
+      }}
       className={cn(
+        selectMode && selected && "ring-2 ring-primary",
         "group relative flex items-center gap-3 p-2 pr-3 rounded-xl overflow-hidden border transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
         active ? "bg-primary/10 border-primary/50" : "bg-surface border-transparent hover:bg-surface-2",
       )}
@@ -98,6 +112,16 @@ export function EpisodeCard({
       >
         {episode.episode_number}
       </span>
+      {selectMode && (
+        <span
+          className={cn(
+            "relative z-10 shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center",
+            selected ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/60",
+          )}
+        >
+          {selected && <Check className="w-4 h-4" />}
+        </span>
+      )}
       <div
         className={cn(
           "relative shrink-0 overflow-hidden rounded-lg bg-surface-2",
@@ -158,7 +182,7 @@ export function EpisodeCard({
             {episode.comments_count}
           </span>
         </div>
-        {isApp && animeTitle && (
+        {isApp && animeTitle && !selectMode && (
           <div
             className="mt-2"
             onClick={(e) => {

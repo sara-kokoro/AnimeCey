@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   AlertTriangle,
   Check,
+  HeartHandshake,
   CloudDownload,
   Loader2,
   Play,
@@ -202,6 +203,22 @@ export default function Telechargements() {
             </ul>
           </section>
         )}
+
+        {/* Soutien */}
+        <Link
+          to="/don"
+          className="mt-8 flex items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 p-3.5 hover:bg-primary/15 transition-colors"
+        >
+          <span className="shrink-0 w-11 h-11 rounded-xl bg-primary text-primary-foreground flex items-center justify-center">
+            <HeartHandshake className="w-5 h-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-display font-bold text-sm">Soutiens Magi-Stream</span>
+            <span className="block text-xs text-muted-foreground">
+              Ton don garde le service gratuit, avec plus d'animés et des serveurs rapides.
+            </span>
+          </span>
+        </Link>
 
         {/* Bibliothèque hors ligne */}
         <section className="mt-8">

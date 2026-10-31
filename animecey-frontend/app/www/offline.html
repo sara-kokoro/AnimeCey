@@ -20,6 +20,13 @@
     li .grow{flex:1;min-width:0}
     li .bar{height:3px;border-radius:3px;background:#2a2a2a;margin-top:8px;overflow:hidden}
     li .bar i{display:block;height:100%;background:var(--pri)}
+    .don{margin-top:28px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:16px}
+    .don h2{font-size:18px;margin:0 0 6px}
+    .don .w{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+    .don .w b{font-size:14px}
+    .don .w small{display:block;color:var(--mut);font-size:11px;margin-top:2px}
+    .don .a{margin:8px 0;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px;font:12px ui-monospace,monospace;word-break:break-all;user-select:all}
+    .don .warn{font-size:11px;color:var(--mut);margin:14px 0 0}
     .empty{border:1px dashed var(--line);border-radius:16px;padding:24px;text-align:center;color:var(--mut)}
 
     /* Lecteur plein écran */
@@ -49,8 +56,15 @@
 <body>
   <h1>Vous êtes hors connexion</h1>
   <p>Regarde tes épisodes téléchargés, ou reconnecte-toi pour retrouver tout le catalogue.</p>
-  <div class="row"><button class="pri" id="retry">Réessayer la connexion</button></div>
+  <div class="row"><button class="pri" id="retry">Réessayer la connexion</button><button id="gdon" style="background:#161616;border:1px solid #2a2a2a">Faire un don</button></div>
   <ul id="list"></ul>
+
+  <section class="don" id="don">
+    <h2>Faire un don</h2>
+    <p>Magi-Stream est gratuit et on veut que ça reste comme ça. Ton don nous aide à payer les serveurs, à ajouter plus d'animés au catalogue et à garder un service rapide et sans abonnement. Merci pour ton soutien !</p>
+    <div id="wallets"></div>
+    <p class="warn">Envoie chaque monnaie uniquement sur le réseau indiqué : un envoi sur un mauvais réseau est perdu.</p>
+  </section>
 
   <div id="pl">
     <video id="v" playsinline preload="metadata" disablepictureinpicture controlslist="nodownload noremoteplayback noplaybackrate"></video>
@@ -78,6 +92,7 @@
   <script>
     var SITE = "https://www.magi-stream.online/";
     var $ = function (id) { return document.getElementById(id); };
+    $("gdon").onclick = function () { $("don").scrollIntoView({ behavior: "smooth" }); };
     $("retry").onclick = function () { location.href = SITE; };
     window.addEventListener("online", function () { location.href = SITE; });
 
@@ -238,6 +253,36 @@
     v.addEventListener("error", function () { if (cur) { $("resume").textContent = "Lecture impossible : fichier introuvable."; $("resume").style.display = "block"; } });
     $("pp").innerHTML = PLAY;
     window.addEventListener("pagehide", function () { if (cur) savePos(cur.episodeId, v.currentTime, v.duration); });
+
+    /* ---------- Dons ---------- */
+    var WALLETS = [
+      ["TON", "Réseau TON (et jettons TON)", "UQCnV7ridLgpX5ijC9nUezc5Xj9aqz5qvdpLuycpVLAIwe7d"],
+      ["Ethereum et réseaux compatibles", "Ethereum, BNB Chain, Robinhood Chain, Arbitrum, Polygon, Base, Avalanche", "0x7D4C4a0398eac6a796eC71C658278a8F20e182FF"],
+      ["Solana", "Réseau Solana", "4pDxQq8RNiutmmM5kYHCHPCKok6AF6ZaebT59kH2Xw8U"],
+      ["Tron", "Réseau Tron (TRC-20)", "TGuwVYkbp4GEG85cmHFc3FtpHRTfHcnBRh"],
+      ["Bitcoin", "Réseau Bitcoin", "bc1qqtpnrz4sts6usg294gt89sy8khl7ddezcgkdsh"]
+    ];
+    function copyText(text, btn) {
+      function ok() { var o = btn.textContent; btn.textContent = "Copié ✓"; setTimeout(function () { btn.textContent = o; }, 1800); }
+      function fallback() {
+        try {
+          var ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+          document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); ok();
+        } catch (e) { btn.textContent = "Appuie longuement sur l'adresse"; }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, fallback); else fallback();
+    }
+    WALLETS.forEach(function (w) {
+      var box = document.createElement("div"); box.className = "w";
+      var b = document.createElement("b"); b.textContent = w[0];
+      var sm = document.createElement("small"); sm.textContent = w[1];
+      var a = document.createElement("div"); a.className = "a"; a.textContent = w[2];
+      var c = document.createElement("button"); c.className = "pri"; c.textContent = "Copier l'adresse";
+      c.onclick = function () { copyText(w[2], c); };
+      box.appendChild(b); box.appendChild(sm); box.appendChild(a); box.appendChild(c);
+      $("wallets").appendChild(box);
+    });
+    if (location.hash === "#don") $("don").scrollIntoView();
 
     showMessage("Lecture des téléchargements…");
     load(0);

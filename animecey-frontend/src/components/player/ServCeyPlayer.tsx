@@ -15,6 +15,12 @@ import {
   VolumeX,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CLICKADILLA } from "@/config/ads";
+import { useIsApp } from "@/hooks/useIsApp";
+import { VastPreroll } from "@/components/player/VastPreroll";
+
+const AD_GAP_KEY = "magi:lastPreroll";
+const AD_GAP_MS = 10 * 60_000; // au plus une pub vidéo toutes les 10 minutes
 
 interface Props {
   src: string;
@@ -27,6 +33,8 @@ interface Props {
   /** Passe à l'épisode suivant (bouton + lecture automatique à la fin). */
   onNext?: () => void;
   hasNext?: boolean;
+  /** Pub vidéo avant la lecture (application seulement). */
+  preroll?: boolean;
 }
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -67,7 +75,11 @@ export function ServCeyPlayer({
   onReady,
   onNext,
   hasNext = false,
+  preroll = false,
 }: Props) {
+  const isApp = useIsApp();
+  const [adDone, setAdDone] = useState(false);
+  const [adOn, setAdOn] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -96,6 +108,46 @@ export function ServCeyPlayer({
   const [retryKey, setRetryKey] = useState(0);
   const [errorInfo, setErrorInfo] = useState<string | null>(null);
   const autoRetries = useRef(0);
+
+  // La décision se prend une seule fois, quand on sait si on est dans l'application
+  useEffect(() => {
+    if (adDone || adOn) return;
+    if (!preroll || !CLICKADILLA.vast.trim()) return void setAdDone(true);
+    if (!isApp) return; // useIsApp passe à true après le premier rendu dans l'application
+    let last = 0;
+    try {
+      last = Number(localStorage.getItem(AD_GAP_KEY) ?? 0);
+    } catch {
+      /* ignoré */
+    }
+    if (Date.now() - last < AD_GAP_MS) return void setAdDone(true);
+    setAdOn(true);
+  }, [preroll, isApp, adDone, adOn]);
+
+  // Sur le site (pas l'application) : lecture immédiate
+  useEffect(() => {
+    if (!preroll) return;
+    const id = window.setTimeout(() => {
+      if (!isApp) setAdDone(true);
+    }, 400);
+    return () => window.clearTimeout(id);
+  }, [preroll, isApp]);
+
+  // autoPlay n'agit qu'à la création de la vidéo : on lance la lecture dès que la pub est terminée ou inutile
+  useEffect(() => {
+    if (adDone) videoRef.current?.play().catch(() => undefined);
+  }, [adDone]);
+
+  const endAd = useCallback(() => {
+    try {
+      localStorage.setItem(AD_GAP_KEY, String(Date.now()));
+    } catch {
+      /* ignoré */
+    }
+    setAdOn(false);
+    setAdDone(true);
+    videoRef.current?.play().catch(() => undefined);
+  }, []);
 
   const posKey = storageKey ? `servcey:pos:${storageKey}` : null;
   const canPip = typeof document !== "undefined" && "pictureInPictureEnabled" in document;
@@ -410,11 +462,13 @@ export function ServCeyPlayer({
         key={`${src}-${retryKey}`}
         ref={videoRef}
         src={src}
-        autoPlay
+        autoPlay={adDone}
         playsInline
         preload="metadata"
         className="absolute inset-0 w-full h-full object-contain bg-black"
       />
+
+      {adOn && <VastPreroll url={CLICKADILLA.vast} onDone={endAd} />}
 
       {/* Surface cliquable */}
       <div className="absolute inset-0" onClick={onSurfaceClick} />

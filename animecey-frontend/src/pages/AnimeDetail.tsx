@@ -2,7 +2,7 @@ import { useParams, Navigate, Link, useNavigate } from "@/lib/router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Calendar, Check, Film, Play, Plus, Star, Tv, ArrowUpDown, Youtube, X, Loader2 } from "lucide-react";
+import { Calendar, Check, CloudDownload, Film, Play, Plus, Star, Tv, ArrowUpDown, Youtube, X, Loader2 } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Badge2 } from "@/components/ui/Badge2";
@@ -14,6 +14,8 @@ import { AnimeCredits } from "@/components/anime/AnimeCredits";
 import { Seo } from "@/components/Seo";
 import { fetchEpisodes, fetchEpisodeSizes } from "@/api/episodes";
 import { SeasonDownloadBar } from "@/components/anime/SeasonDownloadBar";
+import { SelectionDownloadBar, MAX_SELECTION, type Picked } from "@/components/anime/SelectionDownloadBar";
+import { toast } from "sonner";
 import { useIsApp } from "@/hooks/useIsApp";
 import { ensureSeason, fetchSeasonLabels } from "@/api/catalog";
 import { addFavorite, fetchFavorites, removeFavorite } from "@/api/users";
@@ -74,6 +76,11 @@ export default function AnimeDetail() {
     refetchInterval: preparing ? 6000 : false,
   });
 
+  // Choix des épisodes à télécharger (application) : jusqu'à 10, toutes saisons confondues
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<Record<number, Picked>>({});
+  const pickedList = Object.values(picked);
+
   // Tailles des fichiers : seulement dans l'application (affichées sur les boutons « Télécharger »)
   const isApp = useIsApp();
   const { data: sizes = {} } = useQuery({
@@ -82,6 +89,35 @@ export default function AnimeDetail() {
     enabled: isApp && episodes.length > 0,
     staleTime: 60 * 60_000,
   });
+
+  const togglePick = (ep: (typeof episodes)[number]) => {
+    setPicked((cur) => {
+      if (cur[ep.id]) {
+        const { [ep.id]: _gone, ...rest } = cur;
+        void _gone;
+        return rest;
+      }
+      if (Object.keys(cur).length >= MAX_SELECTION) {
+        toast.error(`Tu peux choisir ${MAX_SELECTION} épisodes au maximum.`);
+        return cur;
+      }
+      return {
+        ...cur,
+        [ep.id]: {
+          size: sizes[ep.id],
+          task: {
+            episodeId: ep.id,
+            animeId: ep.anime_id,
+            animeTitle: anime?.title ?? "Anime",
+            episodeNumber: ep.episode_number,
+            seasonLabel: seasonLabels.find((x) => x.number === ep.season_number)?.label ?? `Saison ${ep.season_number}`,
+            language: ep.language,
+            thumbnailUrl: ep.thumbnail_url,
+          },
+        },
+      };
+    });
+  };
 
   // Saison pas encore récupérée : on demande sa préparation, puis la liste se rafraîchit seule.
   useEffect(() => {
@@ -354,6 +390,20 @@ export default function AnimeDetail() {
                   />
                 </div>
               )}
+              {isApp && (
+                <button
+                  onClick={() => {
+                    setSelecting((v) => !v);
+                    setPicked({});
+                  }}
+                  className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-bold transition-colors ${
+                    selecting ? "bg-surface-2 text-foreground" : "bg-primary text-primary-foreground"
+                  }`}
+                >
+                  <CloudDownload className="w-3.5 h-3.5" />
+                  {selecting ? "Annuler" : "Télécharger"}
+                </button>
+              )}
               <button
                 onClick={() => setReverse((r) => !r)}
                 className="ml-auto inline-flex items-center gap-1.5 h-9 px-3 rounded-full bg-surface-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
@@ -381,9 +431,25 @@ export default function AnimeDetail() {
                     seasonLabel={seasonLabels.find((s) => s.number === ep.season_number)?.label}
                     animeTitle={anime.title}
                     size={sizes[ep.id] ?? null}
+                    selectMode={selecting}
+                    selected={!!picked[ep.id]}
+                    onToggle={() => togglePick(ep)}
                   />
                 ))}
               </div>
+              {selecting ? (
+                <SelectionDownloadBar
+                  picked={pickedList}
+                  onCancel={() => {
+                    setSelecting(false);
+                    setPicked({});
+                  }}
+                  onDone={() => {
+                    setSelecting(false);
+                    setPicked({});
+                  }}
+                />
+              ) : (
               <SeasonDownloadBar
                 episodes={episodes}
                 animeTitle={anime.title}
@@ -391,6 +457,7 @@ export default function AnimeDetail() {
                 seasonLabel={seasonLabels.find((s) => s.number === season)?.label ?? `Saison ${season}`}
                 sizes={sizes}
               />
+              )}
               </>
             )}
           </div>

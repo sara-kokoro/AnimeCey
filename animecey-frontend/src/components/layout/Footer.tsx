@@ -17,6 +17,7 @@ export function Footer() {
           <Link to="/catalogue" className="hover:text-foreground transition-colors">Catalogue</Link>
           <Link to="/genres" className="hover:text-foreground transition-colors">Genres</Link>
           <Link to="/legal" className="hover:text-foreground transition-colors">Mentions légales</Link>
+          <Link to="/don" className="hover:text-foreground transition-colors">Faire un don</Link>
           <Link to="/contact" className="hover:text-foreground transition-colors">Contact</Link>
           <AppDownloadButton variant="inline" />
         </nav>

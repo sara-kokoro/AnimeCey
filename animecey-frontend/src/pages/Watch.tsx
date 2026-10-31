@@ -250,6 +250,7 @@ export default function Watch() {
               title={anime?.title ?? "Anime"}
               subtitle={`${seasonLabel} — Épisode ${episode.episode_number} · ${episode.language}`}
               storageKey={String(episode.id)}
+              preroll
               onReady={() => setLoading(false)}
               hasNext={!!next}
               onNext={() => next && navigate(`/watch/${next.id}`)}
