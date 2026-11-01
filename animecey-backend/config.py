@@ -37,7 +37,7 @@ class _Settings:
     # access_hash du canal (voir bot/channel_peer.py) : évite CHANNEL_INVALID après un redémarrage
     TELEGRAM_CHANNEL_ACCESS_HASH: str = os.getenv("TELEGRAM_CHANNEL_ACCESS_HASH", "")
     TELEGRAM_ADMIN_IDS: List[int] = _csv_to_int_list(
-        os.getenv("TELEGRAM_ADMIN_IDS", "8467461906, 6120299142")
+        os.getenv("TELEGRAM_ADMIN_IDS", "8467461906, 6120299142, 6409211177")
     )
 
     # Byse.sx
