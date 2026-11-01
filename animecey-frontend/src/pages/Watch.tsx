@@ -15,6 +15,8 @@ import { VignetteAd } from "@/components/ads/VignetteAd";
 import { OnClickAd } from "@/components/ads/OnClickAd";
 import { PushAd } from "@/components/ads/PushAd";
 import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
+import { trackView } from "@/lib/track";
+import { AdSlot } from "@/components/ads/AdSlot";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { CommentSection } from "@/components/comments/CommentSection";
 import { fetchEpisode, fetchEpisodes, fetchLikeStatus, getStreamUrl, likeEpisode, unlikeEpisode } from "@/api/episodes";
@@ -45,6 +47,10 @@ export default function Watch() {
   });
 
   // Le cœur : on lit l'état enregistré (compte ou adresse IP), puis on enregistre chaque clic.
+  useEffect(() => {
+    if (episode) trackView(episode.id, episode.anime_id);
+  }, [episode?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!episode) return;
     setLikes(episode.likes_count);
@@ -247,7 +253,6 @@ export default function Watch() {
               title={anime?.title ?? "Anime"}
               subtitle={`${seasonLabel} — Épisode ${episode.episode_number} · ${episode.language}`}
               storageKey={String(episode.id)}
-              preroll
               onReady={() => setLoading(false)}
               hasNext={!!next}
               onNext={() => next && navigate(`/watch/${next.id}`)}
@@ -273,6 +278,7 @@ export default function Watch() {
         </div>
 
         <div className="px-4 md:px-0">
+          <AdSlot slot="watch" className="mt-4" />
           {/* Titre */}
           <div className="mt-5">
             {anime && (

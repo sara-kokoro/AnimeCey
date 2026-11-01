@@ -181,6 +181,7 @@ app.add_middleware(
 # ── Routers ────────────────────────────────────────────────────────────
 
 from routers import admin, anilist, animes, auth, comments, episodes, folders, notifications, push, reports, search, tmcooper, tmdb, users  # noqa: E402
+from routers import ads as ads_router, app_notifications as app_notifications_router, track as track_router  # noqa: E402
 from routers import calendar as calendar_router  # noqa: E402
 from routers import catalog as catalog_router  # noqa: E402
 
@@ -200,6 +201,9 @@ app.include_router(tmdb.router, prefix="/api/tmdb", tags=["TMDB"])
 app.include_router(anilist.router, prefix="/api/anilist", tags=["AniList"])
 app.include_router(catalog_router.router, prefix="/api/catalog", tags=["Catalog"])
 app.include_router(calendar_router.router, prefix="/api/calendar", tags=["Calendar"])
+app.include_router(ads_router.router, prefix="/api/ads", tags=["Ads"])
+app.include_router(track_router.router, prefix="/api/track", tags=["Track"])
+app.include_router(app_notifications_router.router, prefix="/api/app-notifications", tags=["App notifications"])
 
 
 @app.get("/api/health")

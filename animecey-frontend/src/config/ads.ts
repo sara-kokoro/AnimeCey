@@ -54,19 +54,3 @@ export const MONETAG = {
       String.raw`<script src="https://5gvci.com/act/files/tag.min.js?z=12007084" data-cfasync="false" async></script>`,
   },
 };
-
-/**
- * OnClicka (AD Code « Magi » #470429).
- * - vast : pub vidéo in-stream (spot 6154478). Utilisée dans l'application seulement : avant un épisode
- *   et avant un téléchargement. Si aucune pub n'est disponible, rien n'est forcé : l'épisode ou le téléchargement démarre.
- * - bannerId : spot « Magi — banner #1 » (6154477), affiché sur la fiche anime.
- * - loader : code « Copy code » de l'AD Code #470429 (tableau de bord OnClicka → ⧉), collé tel quel.
- *   Il est nécessaire pour la bannière. Vide = pas de bannière. Peut venir de VITE_ONCLICKA_CODE.
- */
-export const ONCLICKA = {
-  vast: (env.VITE_ONCLICKA_VAST as string | undefined) ?? "https://bid.onclckstr.com/vast?spot_id=6154478",
-  bannerId: (env.VITE_ONCLICKA_BANNER_ID as string | undefined) ?? "6154477",
-  loader:
-    (env.VITE_ONCLICKA_CODE as string | undefined) ??
-    String.raw`<script async src="https://js.onclckmn.com/static/onclicka.js" data-admpid="470429"></script>`,
-};

@@ -2,20 +2,25 @@ name: Construire l'APK Android
 
 on:
   workflow_dispatch: {}
-  push:
-    paths:
-      - "app/**"
-      - ".github/workflows/build-apk.yml"
-      - "public/icon-512.png"
 
 permissions:
   contents: write
 
 jobs:
   apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+
+      - name: Trouver le dossier app (là où est capacitor.config.json)
+        run: |
+          CFG=$(find . -name capacitor.config.json -not -path "*/node_modules/*" -not -path "*/android/*" | head -1)
+          if [ -z "$CFG" ]; then
+            echo "::error::Dossier app/ introuvable : ajoute-le au dépôt (animecey-frontend/app avec capacitor.config.json)."
+            exit 1
+          fi
+          echo "APP_DIR=$(dirname "$CFG")" >> "$GITHUB_ENV"
+          echo "Dossier trouvé : $(dirname "$CFG")"
 
       - uses: actions/setup-node@v4
         with:
@@ -26,13 +31,17 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Installer Capacitor
-        working-directory: app
-        run: npm install
-
-      - name: Créer et préparer le projet Android
-        working-directory: app
+      - name: Installer ImageMagick (icône) et accepter les licences Android
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq imagemagick
+          command -v convert || sudo ln -s "$(command -v magick)" /usr/local/bin/convert
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Installer Capacitor et créer le projet Android
+        run: |
+          cd "$APP_DIR"
+          npm install
           npx cap add android
           python3 scripts/prepare-android.py "${{ github.run_number }}"
           npx cap sync android
@@ -40,25 +49,24 @@ jobs:
       - name: Clé de signature
         run: |
           mkdir -p ~/.android
-          cp app/debug.keystore ~/.android/debug.keystore
+          cp "$APP_DIR/debug.keystore" ~/.android/debug.keystore
 
       - name: Compiler l'APK
-        working-directory: app/android
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          cd "$APP_DIR/android"
+          ./gradlew assembleDebug --no-daemon
 
       - name: Renommer l'APK
-        run: cp app/android/app/build/outputs/apk/debug/app-debug.apk magi-stream.apk
+        run: cp "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" magi-stream.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: magi-stream-apk
           path: magi-stream.apk
 
-      - name: Publier l'APK (lien stable de téléchargement)
+      - name: Publier l'APK (lien stable)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete apk-latest --cleanup-tag --yes || true
-          gh release create apk-latest magi-stream.apk \
-            --title "Application Android Magi-Stream" \
-            --notes "APK construit automatiquement (build ${{ github.run_number }})."
+          gh release create apk-latest magi-stream.apk --title "Application Android Magi-Stream" --notes "APK construit automatiquement (build ${{ github.run_number }})."

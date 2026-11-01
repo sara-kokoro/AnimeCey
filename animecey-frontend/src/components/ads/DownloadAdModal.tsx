@@ -3,9 +3,6 @@ import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { RICHADS } from "@/config/ads";
 import { requiredDownloadAds, useDownloadsStore } from "@/stores/downloads";
-import { ONCLICKA } from "@/config/ads";
-import { VastPreroll } from "@/components/player/VastPreroll";
-import { useIsApp } from "@/hooks/useIsApp";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const IMA_SRC = "https://imasdk.googleapis.com/js/sdkloader/ima3.js";
@@ -141,51 +138,6 @@ function ImaDownloadModal() {
   );
 }
 
-/**
- * Application : une courte pub vidéo (OnClicka) avant le téléchargement. L'utilisateur est prévenu à l'écran.
- * Si aucune pub n'est disponible (ou si elle échoue), le téléchargement démarre directement : rien n'est forcé.
- */
-function AppDownloadGate() {
-  const batch = useDownloadsStore((s) => s.adBatch);
-  const cancelAds = useDownloadsStore((s) => s.cancelAds);
-  const completeAds = useDownloadsStore((s) => s.completeAds);
-
-  if (!batch || batch.items.length === 0) return null;
-  const n = batch.items.length;
-
-  return (
-    <div className="fixed inset-0 z-[100] bg-background flex flex-col items-center justify-center p-4">
-      <div className="w-full max-w-4xl flex items-center justify-between mb-3">
-        <p className="font-display text-lg font-bold">Courte publicité</p>
-        <button
-          onClick={cancelAds}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-border bg-surface font-semibold hover:border-destructive/60"
-        >
-          <X className="w-4 h-4" /> Annuler
-        </button>
-      </div>
-      <div className="relative w-full max-w-4xl aspect-video bg-card rounded-xl overflow-hidden">
-        <VastPreroll
-          key={batch.id}
-          url={ONCLICKA.vast}
-          maxWaitMs={4000}
-          onDone={() => {
-            void completeAds(batch.id).then((count) => {
-              if (count > 0) toast.success(`${count} épisode${count > 1 ? "s" : ""} en téléchargement.`);
-            });
-          }}
-        />
-      </div>
-      <p className="mt-4 max-w-md text-sm text-muted-foreground text-center">
-        Une courte pub vidéo s'affiche avant le téléchargement : elle nous aide à garder Magi-Stream gratuit. Tes {n}{" "}
-        épisode{n > 1 ? "s" : ""} démarre{n > 1 ? "nt" : ""} juste après. S'il n'y a pas de pub disponible, le
-        téléchargement commence tout de suite.
-      </p>
-    </div>
-  );
-}
-
 export function DownloadAdModal() {
-  const isApp = useIsApp();
-  return isApp ? <AppDownloadGate /> : <ImaDownloadModal />;
+  return <ImaDownloadModal />;
 }

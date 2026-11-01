@@ -9,6 +9,8 @@ import {
   type ErrorComponentProps,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { trackPing } from "@/lib/track";
+import { initNativeBridge } from "@/lib/nativeBridge";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -140,6 +142,8 @@ function RootComponent() {
 
   useEffect(() => {
     void registerAppSw();
+    trackPing();
+    void initNativeBridge();
     void syncNativeDownloads(); // application Android : relie la page au service de téléchargement natif
   }, []);
 

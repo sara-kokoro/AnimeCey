@@ -1,11 +1,10 @@
 /**
  * Réseaux et dons de Magi-Stream.
- * - telegram : mets le lien de ta chaîne/groupe (https://t.me/...) ici, ou dans VITE_TELEGRAM_URL sur Vercel.
- *   Vide = le bouton « Nous suivre sur Telegram » n'est pas affiché.
+ * - telegram : ta chaîne Telegram (peut être changée avec VITE_TELEGRAM_URL sur Vercel). Vide = bouton caché.
  * - wallets : adresses de dons (une par réseau). Les mêmes adresses sont dans app/www/offline.html.
  */
 export const SOCIAL = {
-  telegram: ((import.meta.env.VITE_TELEGRAM_URL as string | undefined) ?? "").trim(),
+  telegram: ((import.meta.env.VITE_TELEGRAM_URL as string | undefined) ?? "https://t.me/MagiStream").trim(),
 };
 
 export interface Wallet {

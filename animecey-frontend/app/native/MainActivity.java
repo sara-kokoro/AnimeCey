@@ -30,6 +30,33 @@ public class MainActivity extends BridgeActivity {
      * Petite interface pour la page « hors connexion » (app/www/offline.html).
      * Cette page est locale : le pont Capacitor n'y est pas actif, elle passe donc par ici.
      */
+    /** Page à ouvrir après un clic sur une notification (lue par le site au démarrage). */
+    static String pendingPath = null;
+
+    private void readPath(Intent i) {
+        if (i == null) return;
+        String p = i.getStringExtra("magi_path");
+        if (p != null && p.startsWith("/")) {
+            pendingPath = p;
+            i.removeExtra("magi_path");
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        readPath(intent);
+        if (pendingPath != null) {
+            try {
+                final String path = pendingPath;
+                pendingPath = null;
+                getBridge().getWebView().loadUrl("https://www.magi-stream.online" + path);
+            } catch (Exception ignored) {
+                // le site lira pendingPath au prochain démarrage
+            }
+        }
+    }
+
     class OfflineApi {
         private final Context ctx;
 
@@ -106,6 +133,38 @@ public class MainActivity extends BridgeActivity {
             }
         }
 
+        /** Le site donne l'adresse de l'API : active les notifications du bot (vérification toutes les ~15 min). */
+        @JavascriptInterface
+        public void configure(String apiBase) {
+            if (apiBase == null || !apiBase.startsWith("https://")) return;
+            ctx.getSharedPreferences(MagiNotifyWorker.PREFS, Context.MODE_PRIVATE).edit().putString("api", apiBase).apply();
+            try {
+                MagiNotifyWorker.schedule(ctx);
+            } catch (Exception ignored) {
+                // WorkManager indisponible : pas de notifications
+            }
+        }
+
+        /** Page demandée par un clic sur une notification (une seule lecture). */
+        @JavascriptInterface
+        public String consumeOpenPath() {
+            String p = pendingPath;
+            pendingPath = null;
+            return p == null ? "" : p;
+        }
+
+        /** Dernière pub « hors ligne » (JSON avec image en data-URL), gardée pour la page sans connexion. */
+        @JavascriptInterface
+        public void saveOfflineAd(String json) {
+            if (json == null || json.length() > 3_000_000) return;
+            ctx.getSharedPreferences(MagiNotifyWorker.PREFS, Context.MODE_PRIVATE).edit().putString("offline_ad", json).apply();
+        }
+
+        @JavascriptInterface
+        public String getOfflineAd() {
+            return ctx.getSharedPreferences(MagiNotifyWorker.PREFS, Context.MODE_PRIVATE).getString("offline_ad", "");
+        }
+
         /** Garde l'écran allumé pendant la lecture. */
         @JavascriptInterface
         public void keepAwake(final boolean on) {
@@ -128,6 +187,14 @@ public class MainActivity extends BridgeActivity {
             webView.addJavascriptInterface(new OfflineApi(getApplicationContext()), "MagiNative");
         } catch (Exception ignored) {
             // la page hors connexion affichera alors un message d'erreur
+        }
+
+        readPath(getIntent());
+
+        // Android 13+ : autorisation d'afficher les notifications (téléchargements et nouveautés)
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 4242);
         }
 
         // Bouton « retour » : revient à la page précédente ; il faut le presser deux fois de suite pour quitter l'app.

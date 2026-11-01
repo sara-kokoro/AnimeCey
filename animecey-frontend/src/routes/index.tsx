@@ -5,10 +5,10 @@ export const Route = createFileRoute("/")({
   ssr: false,
   head: () => ({
     meta: [
-      { title: "Streaming d'animés en VF et VOSTFR | Magi-Stream" },
-      { name: "description", content: "Regarde tes animés, films et séries préférés en streaming gratuit, en VF et VOSTFR." },
-      { property: "og:title", content: "Streaming d'animés en VF et VOSTFR | Magi-Stream" },
-      { property: "og:description", content: "Regarde tes animés, films et séries préférés en streaming gratuit, en VF et VOSTFR." },
+      { title: "Magi-Stream : animés en streaming VF et VOSTFR gratuit, films et séries" },
+      { name: "description", content: "Magi-Stream (Magi Stream) : regarde tes animés en streaming VF et VOSTFR gratuit, ainsi que des films et séries en HD, sur le site et l'application Android. Mushoku Tensei, Deadpool, One Piece et plus." },
+      { property: "og:title", content: "Magi-Stream : animés en streaming VF et VOSTFR gratuit, films et séries" },
+      { property: "og:description", content: "Magi-Stream (Magi Stream) : regarde tes animés en streaming VF et VOSTFR gratuit, ainsi que des films et séries en HD, sur le site et l'application Android. Mushoku Tensei, Deadpool, One Piece et plus." },
     ],
   }),
   component: Home,

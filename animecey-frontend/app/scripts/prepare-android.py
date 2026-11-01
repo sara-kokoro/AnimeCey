@@ -64,6 +64,12 @@ if icon.exists():
                         "-compose", "CopyOpacity", "-composite", str(d / "ic_stat_magi.png")], check=True)
         mask.unlink()
 
+# 3c. WorkManager (vérification périodique des notifications du bot)
+g = gradle.read_text(encoding="utf-8")
+if "androidx.work:work-runtime" not in g:
+    g = re.sub(r"dependencies\s*\{", 'dependencies {\n    implementation "androidx.work:work-runtime:2.9.1"', g, count=1)
+    gradle.write_text(g, encoding="utf-8")
+
 # 4. Version
 g = gradle.read_text(encoding="utf-8")
 g = re.sub(r"versionCode\s+\d+", f"versionCode {int(build)}", g, count=1)

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@/lib/router";
-import { Flame, Sparkles, Star, Film } from "lucide-react";
+import { Flame, Sparkles, Star, Film, Clapperboard } from "lucide-react";
 import type { ReactNode } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -16,6 +16,7 @@ import { CoverflowCarousel } from "@/components/home/CoverflowCarousel";
 import { PagedSlider } from "@/components/home/PagedSlider";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
+import { AdSlot } from "@/components/ads/AdSlot";
 import { SocialBarAd } from "@/components/ads/SocialBarAd";
 import { PushAd } from "@/components/ads/PushAd";
 import { AppDownloadButton } from "@/components/AppDownloadButton";
@@ -48,6 +49,14 @@ export default function Home() {
     staleTime: 60_000,
   });
   const live = useQuery({ queryKey: ["live-home"], queryFn: fetchLiveHome, staleTime: 60_000 });
+  // Carrousel « Films & Séries » (même style que « Derniers ajouts ») : nouveautés, derniers ajouts et mieux notés, sans doublon
+  const liveMix: Anime[] = (() => {
+    if (!live.data) return [];
+    const seen = new Set<number>();
+    return [...live.data.new_releases, ...live.data.latest, ...live.data.top_rated].filter((a) =>
+      seen.has(a.id) ? false : (seen.add(a.id), true),
+    );
+  })();
   const hasLive = !!live.data && (live.data.featured.length > 0 || live.data.latest.length > 0);
 
   const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -87,8 +96,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
       <Seo
-        title="Magi-Stream : streaming d'animés, films et séries en VF et VOSTFR"
-        description="Regarde tes animés, films et séries préférés en streaming gratuit, en VF et VOSTFR, sur Magi-Stream. Derniers épisodes, top de la semaine, tendances de la saison et watchlist."
+        title="Magi-Stream : animés en streaming VF et VOSTFR gratuit, films et séries"
+        description="Magi-Stream (Magi Stream) : regarde tes animés en streaming VF et VOSTFR gratuit, ainsi que des films et séries en HD, sur le site et l'application Android. Derniers épisodes, top de la semaine et tendances de la saison."
         path="/"
         jsonLd={jsonLd}
       />
@@ -121,6 +130,8 @@ export default function Home() {
           ))}
         </nav>
 
+        <AdSlot slot="home_top" className="mt-4" />
+
         <LatestReleasesRail />
 
         <AdsterraBanner format="banner" className="mt-4 mb-2" />
@@ -132,6 +143,15 @@ export default function Home() {
             <HorizontalScroll>
               <Row data={trending.data} isLoading={trending.isLoading} />
             </HorizontalScroll>
+          </Section>
+        )}
+
+        {(live.isLoading || liveMix.length > 0) && (
+          <Section
+            title={<Title icon={<Clapperboard className="w-5 h-5 text-primary" />}>Films &amp; Séries</Title>}
+            href="/catalogue?category=live"
+          >
+            <PagedSlider items={liveMix} isLoading={live.isLoading} />
           </Section>
         )}
 
@@ -173,6 +193,8 @@ export default function Home() {
             <LiveHome data={live.data} />
           </div>
         )}
+
+        <AdSlot slot="home_bottom" className="mt-10" />
 
         <section className="mt-14 mb-10 text-sm text-muted-foreground font-body max-w-3xl">
           <h2 className="font-display font-bold text-lg text-foreground mb-2">Streaming d'animés en VF et VOSTFR</h2>

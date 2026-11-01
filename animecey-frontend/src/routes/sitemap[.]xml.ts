@@ -12,6 +12,8 @@ const STATIC_PAGES: { path: string; priority: string; changefreq: string }[] = [
   { path: "/films-japanime", priority: "0.7", changefreq: "daily" },
   { path: "/calendrier", priority: "0.7", changefreq: "daily" },
   { path: "/genres", priority: "0.6", changefreq: "weekly" },
+  { path: "/don", priority: "0.4", changefreq: "monthly" },
+  { path: "/pub", priority: "0.4", changefreq: "monthly" },
 ];
 
 function esc(value: string): string {

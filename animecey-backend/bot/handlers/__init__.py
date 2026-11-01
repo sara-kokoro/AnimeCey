@@ -16,6 +16,9 @@ from bot.handlers.signalements import register as register_signalements
 from bot.handlers.thumbsr2 import register as register_thumbsr2
 from bot.handlers.live import register as register_live
 from bot.handlers.calendrier import register as register_calendrier
+from bot.handlers.pubs import register as register_pubs
+from bot.handlers.notification import register as register_notification
+from bot.handlers.stats import register as register_stats
 
 
 def register_all(bot):
@@ -32,6 +35,9 @@ def register_all(bot):
     register_thumbsr2(bot)      # /thumbsr2 : migrer les vignettes vers Cloudflare R2
     register_live(bot)          # /add : films et séries live-action (TMDB)
     register_calendrier(bot)    # /check, /calsync : calendrier des sorties
+    register_pubs(bot)          # /pub, /pubs : pubs vendues à la main
+    register_notification(bot)  # /notification : notification à tous les utilisateurs de l'app
+    register_stats(bot)         # /stats : chiffres du site et de l'app
     register_admin(bot)
     register_upload(bot)
     register_callbacks(bot)

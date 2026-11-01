@@ -24,8 +24,7 @@ import { ReportButton } from "@/components/report/ReportButton";
 import { SocialBarAd } from "@/components/ads/SocialBarAd";
 import { OnClickAd } from "@/components/ads/OnClickAd";
 import { PushAd } from "@/components/ads/PushAd";
-import { OnclickaAd } from "@/components/ads/OnclickaAd";
-import { OnclickaBanner } from "@/components/ads/OnclickaBanner";
+import { AdSlot } from "@/components/ads/AdSlot";
 import type { Language } from "@/types";
 
 export default function AnimeDetail() {
@@ -307,7 +306,6 @@ export default function AnimeDetail() {
         <SocialBarAd />
         <OnClickAd />
         <PushAd />
-        <OnclickaAd />
 
         <div className="sticky top-16 z-30 -mx-4 px-4 py-3 bg-background/90 backdrop-blur-xl">
           <div className="flex gap-1 p-1 rounded-full bg-surface border border-border-subtle w-fit max-w-full overflow-x-auto no-scrollbar mx-auto">
@@ -317,7 +315,7 @@ export default function AnimeDetail() {
           </div>
         </div>
 
-        <OnclickaBanner className="mt-3" />
+        <AdSlot slot="detail" className="mt-3" />
 
         {tab === "overview" && (
           <div className="mt-4 space-y-6">

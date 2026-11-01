@@ -18,6 +18,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ServCeyPlayer } from "@/components/player/ServCeyPlayer";
 import { deleteVideo, getPlaybackUrl, listVideos, type OfflineVideo } from "@/lib/offlineDb";
+import { AdSlot } from "@/components/ads/AdSlot";
 import { useDownloadsStore } from "@/stores/downloads";
 
 function fmtSize(bytes: number): string {
@@ -116,6 +117,8 @@ export default function Telechargements() {
           Tes épisodes sont gardés dans l'application : regarde-les même sans internet.
           {videos.length > 0 && ` · ${videos.length} épisode${videos.length > 1 ? "s" : ""} · ${fmtSize(totalSize)}`}
         </p>
+
+        <AdSlot slot="downloads" className="mt-4" />
 
         {/* Lecteur hors ligne */}
         {playing && playingUrl && (

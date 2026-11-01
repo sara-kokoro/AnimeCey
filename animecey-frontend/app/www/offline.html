@@ -20,6 +20,13 @@
     li .grow{flex:1;min-width:0}
     li .bar{height:3px;border-radius:3px;background:#2a2a2a;margin-top:8px;overflow:hidden}
     li .bar i{display:block;height:100%;background:var(--pri)}
+    #adslot{margin-top:22px}
+    .ad{border:1px solid var(--line);border-radius:18px;overflow:hidden;background:var(--card);display:block;color:inherit;text-decoration:none}
+    .ad img{display:block;width:100%;max-height:260px;object-fit:contain;background:#000}
+    .ad .tag{font-size:10px;opacity:.7;padding:6px 10px 0}
+    .ad blockquote{margin:10px 12px;padding-left:10px;border-left:3px solid #e11d48;font-size:14px;white-space:pre-line}
+    .ad .cta{display:block;margin:10px 12px 12px;text-align:center;padding:11px;border-radius:999px;background:#e11d48;color:#fff;font-weight:700}
+    .ad.free{padding:14px;border-style:dashed}
     .don{margin-top:28px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:16px}
     .don h2{font-size:18px;margin:0 0 6px}
     .don .w{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
@@ -58,6 +65,8 @@
   <p>Regarde tes épisodes téléchargés, ou reconnecte-toi pour retrouver tout le catalogue.</p>
   <div class="row"><button class="pri" id="retry">Réessayer la connexion</button><button id="gdon" style="background:#161616;border:1px solid #2a2a2a">Faire un don</button></div>
   <ul id="list"></ul>
+
+  <div id="adslot"></div>
 
   <section class="don" id="don">
     <h2>Faire un don</h2>
@@ -142,6 +151,28 @@
         ul.appendChild(li);
       });
     }
+
+    /* ---------- Pub hors ligne (dernière pub enregistrée par l'app) ---------- */
+    function openExt(u) { if (window.MagiNative && window.MagiNative.openExternal) window.MagiNative.openExternal(u); }
+    (function renderAd() {
+      var box = $("adslot"), data = null;
+      try { data = JSON.parse((window.MagiNative && window.MagiNative.getOfflineAd && window.MagiNative.getOfflineAd()) || "null"); } catch (e) {}
+      var ad = data && data.ad, c = (data && data.contact) || { telegram: "https://t.me/zgatez", telegram_name: "@zgatez", email: "antiflix9@gmail.com" };
+      var el = document.createElement("div"); el.className = "ad";
+      if (ad && ad.image) {
+        var tag = document.createElement("div"); tag.className = "tag"; tag.textContent = "Publicité"; el.appendChild(tag);
+        var im = document.createElement("img"); im.src = ad.image; im.alt = "Publicité"; im.onclick = function () { openExt(ad.link); }; el.appendChild(im);
+        if (ad.text) { var q = document.createElement("blockquote"); q.textContent = ad.text; el.appendChild(q); }
+        if (ad.button_text && ad.button_link) { var b = document.createElement("a"); b.className = "cta"; b.textContent = ad.button_text; b.onclick = function () { openExt(ad.button_link); }; el.appendChild(b); }
+      } else {
+        el.className = "ad free";
+        var t = document.createElement("b"); t.textContent = "Affiche ta pub ici"; el.appendChild(t);
+        var d = document.createElement("div"); d.style.cssText = "font-size:13px;opacity:.75;margin-top:4px";
+        d.textContent = "Augmente ta visibilité avec la pub Magi-Stream. Contact : " + c.telegram_name + " · " + c.email; el.appendChild(d);
+        el.onclick = function () { openExt(c.telegram); };
+      }
+      box.appendChild(el);
+    })();
 
     /* ---------- Accès natif ---------- */
     function native(fn, arg) { try { if (window.MagiNative && window.MagiNative[fn]) window.MagiNative[fn](arg); } catch (e) {} }
