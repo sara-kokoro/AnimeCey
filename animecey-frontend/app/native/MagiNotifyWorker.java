@@ -109,9 +109,17 @@ public class MagiNotifyWorker extends Worker {
             nm.createNotificationChannel(new NotificationChannel(CH, "Nouveautés Magi-Stream", NotificationManager.IMPORTANCE_DEFAULT));
         }
         int id = it.optInt("id");
-        Intent open = new Intent(ctx, MainActivity.class);
-        open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        open.putExtra("magi_path", it.optString("path", "/"));
+        String target = it.optString("path", "/");
+        Intent open;
+        if (target.startsWith("https://")) {
+            // lien externe (Telegram, X, site…) : ouvert dans l'application ou le navigateur adapté
+            open = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(target));
+            open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        } else {
+            open = new Intent(ctx, MainActivity.class);
+            open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            open.putExtra("magi_path", target);
+        }
         PendingIntent pi = PendingIntent.getActivity(ctx, id, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         int small = ctx.getResources().getIdentifier("ic_stat_magi", "drawable", ctx.getPackageName());
