@@ -24,6 +24,8 @@ export async function initNativeBridge(): Promise<void> {
   const n = nat();
   if (!n) return;
   try {
+    // Google Analytics : distingue les visites de l'application de celles du site
+    (window as any).gtag?.("set", "user_properties", { platform: "app" });
     n.configure?.(API_BASE);
     const p: string = n.consumeOpenPath?.() ?? "";
     if (p.startsWith("/") && p !== location.pathname) window.location.assign(p);

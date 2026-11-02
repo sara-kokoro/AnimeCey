@@ -196,12 +196,18 @@ export default function Home() {
 
         <AdSlot slot="home_bottom" className="mt-10" />
 
-        <section className="mt-14 mb-10 text-sm text-muted-foreground font-body max-w-3xl">
-          <h2 className="font-display font-bold text-lg text-foreground mb-2">Streaming d'animés en VF et VOSTFR</h2>
+        <section className="mt-14 mb-10 text-sm text-muted-foreground font-body max-w-3xl space-y-3">
+          <h2 className="font-display font-bold text-lg text-foreground">Magi-Stream : streaming d'animés en VF et VOSTFR, gratuit</h2>
           <p>
-            Magi-Stream te permet de regarder tes animés, films et séries en streaming, en version française (VF) ou
-            sous-titrée (VOSTFR). Retrouve les derniers épisodes, le top de la semaine, les tendances de la saison, le
-            calendrier des sorties et une watchlist pour ne rien rater.
+            Magi-Stream (ou Magi Stream) te permet de regarder tes animés, films et séries en streaming gratuit, en version
+            française (VF) ou sous-titrée (VOSTFR), en HD et sans limite. Retrouve les derniers épisodes, le top de la
+            semaine, les tendances de la saison, le calendrier des sorties et une watchlist pour ne rien rater.
+          </p>
+          <p>
+            Disponible sur le site et sur l'application Android : télécharge tes épisodes pour les regarder plus tard,
+            même sans connexion. Parcours le <a className="underline" href="/catalogue">catalogue</a>, les{" "}
+            <a className="underline" href="/series">séries</a>, les <a className="underline" href="/films">films</a> ou
+            le <a className="underline" href="/calendrier">calendrier des sorties</a>.
           </p>
         </section>
       </main>

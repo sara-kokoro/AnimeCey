@@ -5,10 +5,10 @@ export const Route = createFileRoute("/genres")({
   ssr: false,
   head: () => ({
     meta: [
-      { title: "Genres | Magi-Stream" },
-      { name: "description", content: "Explore les animés par genre." },
-      { property: "og:title", content: "Genres | Magi-Stream" },
-      { property: "og:description", content: "Explore les animés par genre." },
+      { title: "Animés par genre : action, romance, isekai… en streaming | Magi-Stream" },
+      { name: "description", content: "Explore les animés, films et séries par genre en streaming gratuit VF et VOSTFR sur Magi-Stream." },
+      { property: "og:title", content: "Animés par genre : action, romance, isekai… en streaming | Magi-Stream" },
+      { property: "og:description", content: "Explore les animés, films et séries par genre en streaming gratuit VF et VOSTFR sur Magi-Stream." },
     ],
   }),
   component: Genres,

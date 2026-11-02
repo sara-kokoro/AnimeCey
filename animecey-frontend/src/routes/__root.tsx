@@ -83,12 +83,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-      { title: "Magi-Stream : streaming d'animés, films et séries en VF et VOSTFR" },
+      { title: "Magi-Stream : animés en streaming VF et VOSTFR gratuit, films et séries" },
       {
         name: "description",
-        content: "Regarde tes animés, films et séries préférés en streaming gratuit, en VF et VOSTFR, sur Magi-Stream.",
+        content: "Magi-Stream (Magi Stream) : animés en streaming VF et VOSTFR gratuit, films et séries en HD, sur le site et l'application Android.",
       },
       { name: "author", content: "Magi-Stream" },
+      { name: "google-site-verification", content: "ZbxEK1gCea-RkCx-QMlKBKjWUKeY1LIo4s0q5SYlrTo" },
       { name: "theme-color", content: "#0b0b0b" },
       { property: "og:site_name", content: "Magi-Stream" },
       { property: "og:locale", content: "fr_FR" },
@@ -130,6 +131,15 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        {/* Texte et liens dans le HTML de départ : lisibles par Google même avant le chargement de la page */}
+        <div className="sr-only">
+          <p>Magi-Stream : animés en streaming VF et VOSTFR gratuit, films et séries en HD.</p>
+          <nav aria-label="Pages principales">
+            <a href="/">Accueil</a> <a href="/catalogue">Catalogue</a> <a href="/series">Séries</a>{" "}
+            <a href="/films">Films</a> <a href="/films-japanime">Films d'animation japonaise</a>{" "}
+            <a href="/calendrier">Calendrier des sorties</a> <a href="/genres">Genres</a>
+          </nav>
+        </div>
         {children}
         <Scripts />
       </body>
