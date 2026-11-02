@@ -19,6 +19,7 @@ import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { SocialBarAd } from "@/components/ads/SocialBarAd";
 import { PushAd } from "@/components/ads/PushAd";
+import { InPagePushAd } from "@/components/ads/InPagePushAd";
 import { AppDownloadButton } from "@/components/AppDownloadButton";
 import { fetchAnimes, fetchLiveHome, fetchTopWeek, fetchTopRated, fetchLatest, fetchTrending } from "@/api/animes";
 import type { Anime } from "@/types";
@@ -108,6 +109,7 @@ export default function Home() {
       <main className="mx-auto max-w-7xl px-3 md:px-6">
         <SocialBarAd />
         <PushAd />
+        <InPagePushAd />
         <AppDownloadButton />
 
         <nav aria-label="Sections" className="mt-2 flex gap-2 overflow-x-auto no-scrollbar -mx-3 px-3 md:mx-0 md:px-0">

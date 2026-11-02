@@ -14,6 +14,7 @@ import { useDownloadsStore } from "@/stores/downloads";
 import { VignetteAd } from "@/components/ads/VignetteAd";
 import { OnClickAd } from "@/components/ads/OnClickAd";
 import { PushAd } from "@/components/ads/PushAd";
+import { InPagePushAd } from "@/components/ads/InPagePushAd";
 import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import { trackView } from "@/lib/track";
 import { AdSlot } from "@/components/ads/AdSlot";
@@ -238,6 +239,7 @@ export default function Watch() {
       <VignetteAd />
       <OnClickAd />
       <PushAd />
+        <InPagePushAd />
 
       <div className="pt-16 mx-auto max-w-6xl md:px-6">
         <div className="relative w-full aspect-video bg-background md:rounded-2xl overflow-hidden md:mt-4 ring-1 ring-border">

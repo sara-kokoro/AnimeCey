@@ -53,4 +53,9 @@ export const MONETAG = {
       (env.VITE_MONETAG_PUSH_CODE as string | undefined) ??
       String.raw`<script src="https://5gvci.com/act/files/tag.min.js?z=12007084" data-cfasync="false" async></script>`,
   },
+  /** In-Page Push (bannière de notification dans la page, sans autorisation) : zone « Interesting tag ». */
+  inPagePush: {
+    zone: (env.VITE_MONETAG_INPAGE_ZONE as string | undefined) ?? "12006031",
+    src: "https://nap5k.com/tag.min.js",
+  },
 };
