@@ -70,6 +70,24 @@ if "androidx.work:work-runtime" not in g:
     g = re.sub(r"dependencies\s*\{", 'dependencies {\n    implementation "androidx.work:work-runtime:2.9.1"', g, count=1)
     gradle.write_text(g, encoding="utf-8")
 
+# 3d. Signature : on indique la clé fixe (app/debug.keystore) directement à Gradle.
+# Sans cela, Gradle peut en fabriquer une nouvelle à chaque construction, et Android refuse alors
+# d'installer l'APK par-dessus l'ancienne version (« package en conflit »).
+ks = root / "debug.keystore"
+g = gradle.read_text(encoding="utf-8")
+if ks.exists() and "magiSigning" not in g:
+    block = (
+        "android {\n    // magiSigning\n    signingConfigs {\n        debug {\n"
+        f'            storeFile file("{ks.as_posix()}")\n'
+        '            storePassword "android"\n            keyAlias "androiddebugkey"\n            keyPassword "android"\n'
+        "        }\n    }\n"
+    )
+    g = re.sub(r"android\s*\{\s*\n", lambda m: block, g, count=1)
+    gradle.write_text(g, encoding="utf-8")
+    print("Signature : clé fixe appliquée.")
+else:
+    print("ATTENTION : debug.keystore introuvable, signature par défaut.")
+
 # 4. Version
 g = gradle.read_text(encoding="utf-8")
 g = re.sub(r"versionCode\s+\d+", f"versionCode {int(build)}", g, count=1)
