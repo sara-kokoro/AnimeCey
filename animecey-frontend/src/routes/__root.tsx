@@ -21,7 +21,6 @@ import { BottomNav } from "@/components/layout/BottomNav";
 import { DownloadAdModal } from "@/components/ads/DownloadAdModal";
 import { registerAppSw } from "@/lib/pwaRegister";
 import { syncNativeDownloads } from "@/stores/downloads";
-import { UpdateNotice } from "@/components/UpdateNotice";
 import { CommunityPopup } from "@/components/CommunityPopup";
 
 function NotFoundComponent() {
@@ -167,7 +166,6 @@ function RootComponent() {
         </div>
         <BottomNav />
         <DownloadAdModal />
-        <UpdateNotice />
         <CommunityPopup />
       </TooltipProvider>
     </QueryClientProvider>

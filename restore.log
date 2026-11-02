@@ -1,0 +1,9 @@
+pg_restore: error: could not execute query: ERROR:  operator class "public.gin_trgm_ops" does not exist for access method "gin"
+Command was: CREATE INDEX ix_catalog_titles_title_jp_trgm ON public.catalog_titles USING gin (title_jp public.gin_trgm_ops);
+
+
+pg_restore: error: could not execute query: ERROR:  operator class "public.gin_trgm_ops" does not exist for access method "gin"
+Command was: CREATE INDEX ix_catalog_titles_title_trgm ON public.catalog_titles USING gin (title public.gin_trgm_ops);
+
+
+pg_restore: warning: errors ignored on restore: 2
