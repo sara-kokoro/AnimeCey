@@ -58,6 +58,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from config import settings
 from database import async_session
@@ -176,7 +177,7 @@ def parse_calendar(page: str) -> list[dict]:
                 logger.warning("Calendrier : anime_id hors limites ignoré : %s (%s)", franime_id, raw["href"][:120])
                 continue
             lang_code = (q.get("lang") or ["vo"])[0].lower()
-            season_raw = (q.get("s") or ["1"])[0].strip() or "1"
+            season_raw = ((q.get("s") or ["1"])[0].strip() or "1")[:16]  # même longueur que la colonne
             slug = url.path.rstrip("/").split("/")[-1]
         except (KeyError, ValueError, IndexError):
             continue
@@ -227,7 +228,7 @@ def parse_calendar(page: str) -> list[dict]:
             "franime_id": franime_id,
             "slug": slug[:255],
             "title": title[:500],
-            "season_raw": season_raw[:16],
+            "season_raw": season_raw,
             "episode_number": episode,
             "language": language,
             "release_at": local.astimezone(timezone.utc),
@@ -458,22 +459,25 @@ async def _sync_franime() -> dict:
 
         created = updated = linked = 0
         async with async_session() as db:
-            lo = min(p["release_at"] for p in parsed) - timedelta(days=1)
+            # On charge TOUTES les lignes de ces animés (pas seulement celles après une date) : une sortie
+            # décalée/reportée garde sa clé (animé, saison, épisode, langue) mais change de date ; avec
+            # l'ancien filtre sur release_at, l'ancienne ligne n'était pas retrouvée -> INSERT en double.
+            fids = {p["franime_id"] for p in parsed}
             existing = {
                 (e.franime_id, e.season_raw, e.episode_number, e.language): e
                 for e in (
-                    await db.execute(select(CalendarEntry).where(CalendarEntry.release_at >= lo))
+                    await db.execute(select(CalendarEntry).where(CalendarEntry.franime_id.in_(fids)))
                 ).scalars()
             }
             matches: dict[str, int | None] = {}
+            to_insert: list[dict] = []
             for p in parsed:
                 if p["title"] not in matches:
                     matches[p["title"]] = (await find_anime(db, p["title"]))[0]
                 sure = matches[p["title"]]
                 entry = existing.get((p["franime_id"], p["season_raw"], p["episode_number"], p["language"]))
                 if entry is None:
-                    db.add(CalendarEntry(anime_id=sure, **p))
-                    created += 1
+                    to_insert.append({**p, "anime_id": sure})
                     continue
                 changed = False
                 if entry.notified_at is None and entry.release_at != p["release_at"]:
@@ -487,6 +491,14 @@ async def _sync_franime() -> dict:
                     linked += 1
                     changed = True
                 updated += int(changed)
+            # Filet de sécurité : si une ligne existe déjà (autre processus, redéploiement en parallèle...),
+            # Postgres l'ignore au lieu de faire planter toute la synchro.
+            for i in range(0, len(to_insert), 500):
+                chunk = to_insert[i : i + 500]
+                res = await db.execute(
+                    pg_insert(CalendarEntry).values(chunk).on_conflict_do_nothing(constraint="uq_calendar_entry")
+                )
+                created += res.rowcount if res.rowcount is not None and res.rowcount >= 0 else len(chunk)
             await db.execute(
                 delete(CalendarEntry).where(
                     CalendarEntry.release_at < datetime.now(timezone.utc) - timedelta(days=KEEP_DAYS)
@@ -633,13 +645,11 @@ async def sync_anilist() -> dict:
         created = updated = linked = 0
         async with async_session() as db:
             slots = {s.anilist_id: (s.hour, s.minute) for s in (await db.execute(select(CalendarVfSlot))).scalars()}
-            lo = min(a["airing_at"] for a in airings) - timedelta(days=2)
+            fids = {-a["anilist_id"] for a in airings}
             existing = {
                 (e.franime_id, e.season_raw, e.episode_number, e.language): e
                 for e in (
-                    await db.execute(
-                        select(CalendarEntry).where(CalendarEntry.franime_id < 0, CalendarEntry.release_at >= lo)
-                    )
+                    await db.execute(select(CalendarEntry).where(CalendarEntry.franime_id.in_(fids)))
                 ).scalars()
             }
             matches: dict[int, int | None] = {}
