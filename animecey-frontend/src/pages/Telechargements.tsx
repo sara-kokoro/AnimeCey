@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   AlertTriangle,
   CloudDownload,
+  HeartHandshake,
   Loader2,
   Wifi,
   WifiOff,
@@ -152,66 +153,6 @@ export default function Telechargements() {
               </button>
             </div>
           </div>
-        )}
-
-        {/* File d'attente */}
-        {activeTasks.length > 0 && (
-          <section className="mt-8">
-            <h2 className="font-display font-bold text-lg mb-3">File de téléchargement</h2>
-            <ul className="space-y-2">
-              {activeTasks.map((t) => (
-                <li
-                  key={t.episodeId}
-                  className="flex items-center gap-3 rounded-2xl bg-surface border border-border-subtle p-4"
-                >
-                  <div className="w-12 h-12 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
-                    {t.status === "downloading" ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : t.status === "error" ? (
-                      <AlertTriangle className="w-5 h-5 text-highlight" />
-                    ) : (
-                      <CloudDownload className="w-5 h-5" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-base font-bold truncate">
-                      {t.animeTitle} — Épisode {t.episodeNumber}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {t.status === "downloading"
-                        ? `Téléchargement… ${t.progress}%`
-                        : t.status === "error"
-                          ? (t.error ?? "Erreur")
-                          : "En attente"}
-                    </p>
-                    {t.status === "downloading" && (
-                      <div className="mt-2 h-2.5 rounded-full bg-foreground/10 overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full transition-all duration-300"
-                          style={{ width: `${t.progress}%` }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  {t.status === "error" && (
-                    <button
-                      onClick={() => retryTask(t.episodeId)}
-                      className="shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-semibold"
-                    >
-                      Réessayer
-                    </button>
-                  )}
-                  <button
-                    onClick={() => removeTask(t.episodeId)}
-                    aria-label="Annuler le téléchargement"
-                    className="shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-border text-sm font-semibold hover:border-highlight/60 hover:text-highlight"
-                  >
-                    <X className="w-4 h-4" /> Annuler
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
         )}
 
         {/* File d'attente */}

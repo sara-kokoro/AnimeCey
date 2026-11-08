@@ -344,11 +344,11 @@
 
     /* ---------- Dons ---------- */
     var WALLETS = [
-      ["TON", "Réseau TON (et jettons TON)", "UQCnV7ridLgpX5ijC9nUezc5Xj9aqz5qvdpLuycpVLAIwe7d"],
-      ["Ethereum et réseaux compatibles", "Ethereum, BNB Chain, Robinhood Chain, Arbitrum, Polygon, Base, Avalanche", "0x7D4C4a0398eac6a796eC71C658278a8F20e182FF"],
-      ["Solana", "Réseau Solana", "4pDxQq8RNiutmmM5kYHCHPCKok6AF6ZaebT59kH2Xw8U"],
-      ["Tron", "Réseau Tron (TRC-20)", "TGuwVYkbp4GEG85cmHFc3FtpHRTfHcnBRh"],
-      ["Bitcoin", "Réseau Bitcoin", "bc1qqtpnrz4sts6usg294gt89sy8khl7ddezcgkdsh"]
+      ["TON", "Réseau TON (et jettons TON)", "UQCnV7ridLgpX5ijC9nUezc5Xj9aqz5qvdpLuycpVLAIwe7d", "ton"],
+      ["Ethereum et réseaux compatibles", "Ethereum, BNB Chain, Robinhood Chain, Arbitrum, Polygon, Base, Avalanche", "0x7D4C4a0398eac6a796eC71C658278a8F20e182FF", "eth"],
+      ["Solana", "Réseau Solana", "4pDxQq8RNiutmmM5kYHCHPCKok6AF6ZaebT59kH2Xw8U", "sol"],
+      ["Tron", "Réseau Tron (TRC-20)", "TGuwVYkbp4GEG85cmHFc3FtpHRTfHcnBRh", "tron"],
+      ["Bitcoin", "Réseau Bitcoin", "bc1qqtpnrz4sts6usg294gt89sy8khl7ddezcgkdsh", "btc"]
     ];
     function copyText(text, btn) {
       function ok() { var o = btn.textContent; btn.textContent = "Copié ✓"; setTimeout(function () { btn.textContent = o; }, 1800); }
@@ -362,12 +362,13 @@
     }
     WALLETS.forEach(function (w) {
       var box = document.createElement("div"); box.className = "w";
+      var ic = document.createElement("img"); ic.src = "lottie/" + w[3] + ".webp"; ic.width = 36; ic.height = 36; ic.alt = ""; ic.style.cssText = "vertical-align:middle;margin-right:8px"; ic.onerror = function () { ic.remove(); };
       var b = document.createElement("b"); b.textContent = w[0];
       var sm = document.createElement("small"); sm.textContent = w[1];
       var a = document.createElement("div"); a.className = "a"; a.textContent = w[2];
       var c = document.createElement("button"); c.className = "pri"; c.textContent = "Copier l'adresse";
       c.onclick = function () { copyText(w[2], c); };
-      box.appendChild(b); box.appendChild(sm); box.appendChild(a); box.appendChild(c);
+      box.appendChild(ic); box.appendChild(b); box.appendChild(sm); box.appendChild(a); box.appendChild(c);
       $("wallets").appendChild(box);
     });
     if (location.hash === "#don") $("don").scrollIntoView();

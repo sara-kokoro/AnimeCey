@@ -1,0 +1,17 @@
+Variables à vérifier dans Railway (onglet Variables du service backend).
+Ne mets jamais les valeurs dans le code.
+
+PUBLIC_BASE_URL      = https://animecey-production.up.railway.app   (adresse publique du backend, sans / final)
+DATABASE_URL         = (l'URL Neon)
+SECRET_KEY           = (nouvelle clé longue et aléatoire)
+ADMIN_PASSWORD       = (nouveau mot de passe admin)
+TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_BOT_TOKEN, TELEGRAM_CHANNEL_ID
+HELPER_BOT_TOKENS    = (jetons des bots de streaming, séparés par des virgules) -> sans eux : vignettes et vidéos en erreur 503
+HELPER_IN_MEMORY     = true   (Railway efface les fichiers à chaque déploiement)
+CORS_ORIGINS         = https://www.magi-stream.online,https://magi-stream.online
+R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_ENDPOINT_URL, R2_PUBLIC_URL   (si tu utilises R2)
+TMDB_API_KEY, BYSE_API_KEY, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
+
+Dans les logs de démarrage, cherche :
+  "Bots de streaming : X/Y prêts"   -> X doit être >= 1
+  "Aucun bot d'aide"                -> HELPER_BOT_TOKENS manque
