@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 const SITE = "https://www.magi-stream.online";
-const API_BASE = import.meta.env.VITE_API_URL ?? "https://yumeflowerbot.koyeb.app/api";
+const API_BASE = import.meta.env.VITE_API_URL ?? "https://animecey-production.up.railway.app/api";
 
 // Pages publiques fixes (les fiches animé sont ajoutées depuis l'API).
 const STATIC_PAGES: { path: string; priority: string; changefreq: string }[] = [

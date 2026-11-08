@@ -3,7 +3,7 @@ import { fetchAd } from "@/api/ads";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 const nat = (): any => (typeof window === "undefined" ? undefined : (window as any).MagiNative);
 
-const API_BASE: string = import.meta.env.VITE_API_URL ?? "https://yumeflowerbot.koyeb.app/api";
+const API_BASE: string = import.meta.env.VITE_API_URL ?? "https://animecey-production.up.railway.app/api";
 
 function toDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {

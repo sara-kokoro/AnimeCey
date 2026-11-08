@@ -3,7 +3,7 @@ import AnimeDetail from "@/pages/AnimeDetail";
 import type { Anime } from "@/types";
 
 const SITE = "https://www.magi-stream.online";
-const API_BASE = import.meta.env.VITE_API_URL ?? "https://yumeflowerbot.koyeb.app/api";
+const API_BASE = import.meta.env.VITE_API_URL ?? "https://animecey-production.up.railway.app/api";
 
 const clean = (s: string, n: number) => {
   const t = s.replace(/\s+/g, " ").trim();

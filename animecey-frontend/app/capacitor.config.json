@@ -5,7 +5,7 @@
   "server": {
     "url": "https://www.magi-stream.online",
     "errorPath": "offline.html",
-    "allowNavigation": ["www.magi-stream.online", "magi-stream.online", "*.magi-stream.online", "*.koyeb.app"]
+    "allowNavigation": ["www.magi-stream.online", "magi-stream.online", "*.magi-stream.online", "*.koyeb.app", "*.up.railway.app"]
   },
   "android": {
     "allowMixedContent": false,
