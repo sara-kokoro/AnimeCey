@@ -1,8 +1,7 @@
 """/notification : envoie une notification à tous les utilisateurs de l'application.
 
   /notification   le bot demande, une étape à la fois : image (facultative), titre, texte, page ouverte au clic
-                  (accueil, téléchargements, catalogue, calendrier, don, la fiche d'un animé par son numéro, ou un lien externe
-                  comme t.me/... ou x.com/... qui s'ouvre dans l'application concernée).
+                  (accueil, téléchargements, catalogue, calendrier, don, ou la fiche d'un animé par son numéro).
 
 L'application récupère les nouvelles notifications toutes les ~15 minutes, même fermée.
 """
@@ -38,7 +37,6 @@ in_flow = filters.create(_in_flow_filter)
 def _pages_markup() -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(label, callback_data=f"notif:page:{key}")] for key, label in APP_PAGES.items()]
     rows.append([InlineKeyboardButton("🎬 La fiche d'un animé / film / série", callback_data="notif:page:anime")])
-    rows.append([InlineKeyboardButton("🔗 Un lien externe (Telegram, X, site…)", callback_data="notif:page:link")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -129,18 +127,6 @@ def register(bot: Client):
             flow["path"] = f"/anime/{anime.id}"
             _flows.pop(uid, None)
             await _finish(message, flow)
-        elif step == "link":
-            url = text.split()[0] if text else ""
-            if url.lower().startswith("http://"):
-                url = "https://" + url[7:]
-            elif not url.lower().startswith("https://"):
-                url = "https://" + url.lstrip("/@") if re.match(r"^(t\.me|x\.com|twitter\.com|[\w-]+\.[a-z]{2,})", url, re.I) else ""
-            if not re.fullmatch(r"https://[^\s/]+\.[a-z]{2,}(/\S*)?", url, re.I) or len(url) > 200:
-                await message.reply("Lien invalide. Exemples : https://t.me/MagiStream ou t.me/MagiStream ou https://x.com/... (200 caractères max).")
-                return message.stop_propagation()
-            flow["path"] = url
-            _flows.pop(uid, None)
-            await _finish(message, flow)
         elif step == "page":
             await message.reply("Choisis une page avec les boutons ci-dessus.")
         message.stop_propagation()
@@ -157,10 +143,6 @@ def register(bot: Client):
         if key == "anime":
             flow["step"] = "anime_id"
             await cq.message.reply("Envoie le numéro de l'animé / film / série (le même que pour /anime).")
-            return await cq.answer()
-        if key == "link":
-            flow["step"] = "link"
-            await cq.message.reply("Envoie le lien : https://t.me/MagiStream, t.me/..., https://x.com/..., ou tout autre site.")
             return await cq.answer()
         if key in _PATHS:
             flow["path"] = _PATHS[key]

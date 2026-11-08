@@ -6,8 +6,25 @@ from sqlalchemy.orm import DeclarativeBase
 
 from config import settings
 
+def _clean_url(raw: str) -> str:
+    """Accepte l'URL telle que Neon la donne (postgresql://…?sslmode=require&channel_binding=require)."""
+    url = raw.strip().strip('"').strip("'")
+    for old in ("postgres://", "postgresql://"):
+        if url.startswith(old):
+            url = "postgresql+asyncpg://" + url[len(old):]
+    base, _, query = url.partition("?")
+    params = [p for p in query.split("&") if p and p.split("=")[0] not in ("sslmode", "channel_binding", "ssl")]
+    if "localhost" not in base and "127.0.0.1" not in base:
+        params.append("ssl=require")
+    return base + ("?" + "&".join(params) if params else "")
+
+
+_DB_URL = _clean_url(settings.DATABASE_URL)
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    _DB_URL,
+    # connexion « pooler » de Neon (pgbouncer) : pas de cache de requêtes préparées
+    connect_args={"statement_cache_size": 0} if "-pooler" in _DB_URL else {},
     echo=settings.DEBUG,
     pool_size=5,
     max_overflow=10,

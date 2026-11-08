@@ -549,11 +549,8 @@ def register(bot: Client):
 
         raw_caption = message.caption or ""
         replace_ok = bool(_REPLACE_RE.search(raw_caption))  # mot REMPLACER dans la légende de ce fichier
-        caption_text = _REPLACE_RE.sub(" ", raw_caption)
-        p = parse_caption(caption_text)
-        # Le nom du fichier n'est lu que si le fichier n'a AUCUNE légende (pas même un mot).
-        # Dès qu'il y a une légende, on ne s'appuie que sur elle.
-        if not caption_text.strip():
+        p = parse_caption(_REPLACE_RE.sub(" ", raw_caption))
+        if p.episode is None or p.lang is None or p.title is None or p.slot_defaulted:
             p = merge_missing(p, parse_caption(os.path.splitext(fname)[0], is_filename=True))
 
         # Options de /anime (langue / emplacement forcés), tant que l'animé fixé est actif
@@ -629,9 +626,17 @@ def register(bot: Client):
                     # Tout le dossier temporaire (source + MP4 converti) est effacé à la sortie du bloc.
                     with tempfile.TemporaryDirectory(dir=TMP_DIR) as tmp:
                         await ui.set("⬇️ Téléchargement…", force=True)
-                        src = await client.download_media(
-                            message, file_name=os.path.join(tmp, "src"), progress=_transfer_cb(ui, "⬇️ Téléchargement")
-                        )
+                        src_path = os.path.join(tmp, "src")
+                        cb = _transfer_cb(ui, "⬇️ Téléchargement")
+                        try:  # téléchargement parallèle (beaucoup plus rapide)
+                            from services.filestream import fast_download
+
+                            src = await fast_download(client, message, src_path, progress=cb)
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception:  # noqa: BLE001 — on retombe sur la méthode classique
+                            logger.warning("téléchargement rapide impossible, méthode classique", exc_info=True)
+                            src = await client.download_media(message, file_name=src_path, progress=cb)
                         dst = os.path.join(tmp, f"{p.episode:03d}.mp4")
                         info = await media_service.remux_to_mp4(src, dst, on_progress=_convert_cb(ui))
                         os.remove(src)  # libère le disque dès la conversion finie

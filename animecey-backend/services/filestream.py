@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 _session_locks: dict[int, asyncio.Lock] = {}
 
 
+PREFETCH = max(1, int(__import__("os").getenv("STREAM_PREFETCH", "4")))  # blocs demandés d'avance
+
+
 def _chunk_size(length: int) -> int:
     return 2 ** max(min(math.ceil(math.log2(length / 1024)), 10), 2) * 1024
 
@@ -130,31 +133,48 @@ async def yield_file(
     media_session = await _get_media_session(client, fid.dc_id)
     location = _get_location(fid)
 
-    r = await media_session.send(
-        raw.functions.upload.GetFile(location=location, offset=offset, limit=chunk_sz)
-    )
-    if not isinstance(r, raw.types.upload.File):
-        return
+    # Lecture « en pipeline » : plusieurs blocs demandés d'avance au lieu d'un par un.
+    # Avant, chaque bloc attendait la fin du précédent (débit = 1 Mo / temps d'aller-retour Telegram).
+    # Maintenant PREFETCH blocs sont en vol en même temps, ce qui multiplie le débit.
+    import asyncio
 
-    for current_part in range(1, part_count + 1):
-        chunk = r.bytes
-        if not chunk:
-            break
+    def _fetch(off: int):
+        return asyncio.ensure_future(
+            media_session.send(raw.functions.upload.GetFile(location=location, offset=off, limit=chunk_sz))
+        )
 
-        if part_count == 1:
-            yield chunk[first_part_cut:last_part_cut]
-        elif current_part == 1:
-            yield chunk[first_part_cut:]
-        elif current_part == part_count:
-            yield chunk[:last_part_cut]  # CORRECTIF : avant, le dernier morceau n'était pas coupé
-        else:
-            yield chunk
+    pending: list = []
+    next_offset = offset
+    requested = 0
+    while requested < min(PREFETCH, part_count):
+        pending.append(_fetch(next_offset))
+        next_offset += chunk_sz
+        requested += 1
 
-        if current_part < part_count:
-            offset += chunk_sz
-            r = await media_session.send(
-                raw.functions.upload.GetFile(location=location, offset=offset, limit=chunk_sz)
-            )
+    try:
+        for current_part in range(1, part_count + 1):
+            r = await pending.pop(0)
+            if requested < part_count:
+                pending.append(_fetch(next_offset))
+                next_offset += chunk_sz
+                requested += 1
+            if not isinstance(r, raw.types.upload.File):
+                return
+            chunk = r.bytes
+            if not chunk:
+                break
+
+            if part_count == 1:
+                yield chunk[first_part_cut:last_part_cut]
+            elif current_part == 1:
+                yield chunk[first_part_cut:]
+            elif current_part == part_count:
+                yield chunk[:last_part_cut]  # CORRECTIF : avant, le dernier morceau n'était pas coupé
+            else:
+                yield chunk
+    finally:
+        for t in pending:  # le client est parti : on annule les blocs encore demandés
+            t.cancel()
 
 
 async def stream_media(
@@ -192,3 +212,62 @@ async def stream_media(
 
     body = yield_file(client, msg, offset, first_part_cut, last_part_cut, part_count, chunk_sz)
     return body, from_bytes, until_bytes, file_size, mime_type, file_name
+
+
+async def fast_download(client: Client, msg: Message, path: str, progress=None, parts: int | None = None) -> str:
+    """Télécharge un fichier Telegram en PARALLÈLE : le fichier est coupé en `parts` tranches lues en même temps,
+    chacune avec plusieurs blocs demandés d'avance. Bien plus rapide que download_media (1 bloc à la fois).
+
+    Écrit directement dans `path`. Lève une exception si quelque chose échoue (l'appelant peut retomber sur
+    download_media).
+    """
+    import os
+
+    parts = parts or max(1, int(os.getenv("DOWNLOAD_PARTS", "4")))
+    size = int(get_file_properties(msg).file_size or 0)
+    if size <= 0:
+        raise ValueError("taille inconnue")
+    MB = 1024 * 1024
+    seg = max(MB, -(-size // parts))
+    seg = -(-seg // MB) * MB  # tranches alignées sur 1 Mo
+    ranges = [(s, min(s + seg, size) - 1) for s in range(0, size, seg)]
+
+    with open(path, "wb") as f:
+        f.truncate(size)
+
+    done = 0
+    last_report = 0.0
+
+    async def report() -> None:
+        nonlocal last_report
+        if progress is None:
+            return
+        import time
+
+        now = time.monotonic()
+        if done >= size or now - last_report >= 2.0:
+            last_report = now
+            res = progress(done, size)
+            if asyncio.iscoroutine(res):
+                await res
+
+    async def worker(start: int, end: int) -> None:
+        nonlocal done
+        body, *_ = await stream_media(client, msg, start, end)
+        with open(path, "r+b") as fh:
+            fh.seek(start)
+            async for chunk in body:
+                fh.write(chunk)
+                done += len(chunk)
+                await report()
+
+    tasks = [asyncio.ensure_future(worker(a, b)) for a, b in ranges]
+    try:
+        await asyncio.gather(*tasks)
+    except BaseException:
+        for t in tasks:
+            t.cancel()
+        raise
+    if done != size:
+        raise IOError(f"téléchargement incomplet ({done}/{size})")
+    return path
