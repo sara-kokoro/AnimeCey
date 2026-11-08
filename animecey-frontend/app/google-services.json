@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "744707899141",
+    "project_id": "magi-568b4",
+    "storage_bucket": "magi-568b4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:744707899141:android:cef8fe8710e69dd463c16c",
+        "android_client_info": {
+          "package_name": "online.magistream.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCd1YHpfH71S2Eh_2KZbt2wh1Z2jyh0Xgg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -5,7 +5,7 @@ reste mis à jour comme d'habitude, sans republier l'APK. Elle ajoute :
 
 - des téléchargements en arrière-plan (notification de progression, bouton « Annuler », reprise) ;
 - le stockage des épisodes dans le téléphone ;
-- une page « Hors connexion » qui liste les épisodes téléchargés (`www/offline.html`).
+- une page « Hors connexion » en React qui liste et lit les épisodes téléchargés. Son code est dans `offline/` (elle réutilise `DownloadsLibrary` et `ServCeyPlayer` du site) ; `npm run build:offline` la construit dans `app/www/offline.html` + `app/www/assets/`, et le workflow GitHub le fait automatiquement avant de fabriquer l'APK.
 
 ## Obtenir l'APK
 1. Dépose ce projet dans ton dépôt GitHub (le dossier `.github/workflows/` à la racine).

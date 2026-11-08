@@ -1,0 +1,8 @@
+/* Même design que le site : on réutilise sa feuille de style. */
+@import "../src/styles.css";
+
+html,
+body {
+  background: var(--background, #0a0a0a);
+  color: var(--foreground, #f5f5f5);
+}

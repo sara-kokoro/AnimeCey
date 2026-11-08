@@ -127,7 +127,7 @@ export async function getVideoBlob(episodeId: number): Promise<Blob> {
 
 /* ───────── API commune (navigateur + application) ───────── */
 
-function fromNative(i: import("@/lib/nativeDownloads").NativeItem): OfflineVideo {
+export function fromNative(i: import("@/lib/nativeDownloads").NativeItem): OfflineVideo {
   let m: Partial<OfflineVideo> = {};
   try {
     m = i.meta ? (JSON.parse(i.meta) as Partial<OfflineVideo>) : {};

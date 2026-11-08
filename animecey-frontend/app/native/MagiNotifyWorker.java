@@ -34,7 +34,8 @@ import java.util.concurrent.TimeUnit;
  */
 public class MagiNotifyWorker extends Worker {
     static final String PREFS = "magi_prefs";
-    static final String CH = "magi_news";
+    static final String CH = "magi_alerts"; // importance haute : la notification s'affiche en bandeau
+    static final String OLD_CH = "magi_news";
     static final String UNIQUE = "magi_notify";
 
     public MagiNotifyWorker(@NonNull Context ctx, @NonNull WorkerParameters p) {
@@ -103,10 +104,11 @@ public class MagiNotifyWorker extends Worker {
         }
     }
 
-    private void show(Context ctx, JSONObject it) {
+    static void show(Context ctx, JSONObject it) {
         NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= 26) {
-            nm.createNotificationChannel(new NotificationChannel(CH, "Nouveautés Magi-Stream", NotificationManager.IMPORTANCE_DEFAULT));
+            nm.deleteNotificationChannel(OLD_CH);
+            nm.createNotificationChannel(new NotificationChannel(CH, "Nouveautés Magi-Stream", NotificationManager.IMPORTANCE_HIGH));
         }
         int id = it.optInt("id");
         String target = it.optString("path", "/");
@@ -130,7 +132,7 @@ public class MagiNotifyWorker extends Worker {
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(it.optString("body", "")))
                 .setContentIntent(pi)
                 .setAutoCancel(true)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT);
+                .setPriority(NotificationCompat.PRIORITY_HIGH);
         String img = it.optString("image_url", "");
         if (!img.isEmpty() && !it.isNull("image_url")) {
             Bitmap bmp = bitmap(img);

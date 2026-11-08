@@ -150,6 +150,7 @@ public class MainActivity extends BridgeActivity {
             ctx.getSharedPreferences(MagiNotifyWorker.PREFS, Context.MODE_PRIVATE).edit().putString("api", apiBase).apply();
             try {
                 MagiNotifyWorker.schedule(ctx);
+                MagiFirebaseService.syncToken(ctx);
             } catch (Exception ignored) {
                 // WorkManager indisponible : pas de notifications
             }

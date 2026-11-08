@@ -31,12 +31,27 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Construire la page hors connexion (React, embarquée dans l'APK)
+        run: |
+          cd "$APP_DIR/.."
+          npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts
+          npm run build:offline
+
       - name: Installer ImageMagick (icône) et accepter les licences Android
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq imagemagick
           command -v convert || sudo ln -s "$(command -v magick)" /usr/local/bin/convert
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Clé Firebase (google-services.json, optionnelle)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > "$APP_DIR/google-services.json"
+          fi
+          if [ -f "$APP_DIR/google-services.json" ]; then echo "Firebase activé"; else echo "::warning::google-services.json absent : notifications Firebase désactivées"; fi
 
       - name: Installer Capacitor et créer le projet Android
         run: |

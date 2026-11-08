@@ -52,6 +52,16 @@ if 'android:host="www.magi-stream.online"' not in xml:
         '    '
     )
     xml = xml.replace("</activity>", link + "</activity>", 1)
+# Notifications Firebase (FCM)
+if "MagiFirebaseService" not in xml:
+    fcm = (
+        '        <service android:name=".MagiFirebaseService" android:exported="false">\n'
+        '            <intent-filter>\n'
+        '                <action android:name="com.google.firebase.MESSAGING_EVENT" />\n'
+        '            </intent-filter>\n'
+        '        </service>\n    '
+    )
+    xml = xml.replace("</application>", fcm + "</application>", 1)
 manifest.write_text(xml, encoding="utf-8")
 
 # 3. Icône (anciennes icônes carrées sur toutes les versions d'Android)
@@ -82,6 +92,19 @@ g = gradle.read_text(encoding="utf-8")
 if "androidx.work:work-runtime" not in g:
     g = re.sub(r"dependencies\s*\{", 'dependencies {\n    implementation "androidx.work:work-runtime:2.9.1"', g, count=1)
     gradle.write_text(g, encoding="utf-8")
+
+# 3c-bis. Firebase Cloud Messaging : dépendance + google-services.json (téléchargé depuis la console Firebase).
+# Le modèle Capacitor applique déjà le plugin « google-services » si le fichier est présent dans android/app/.
+g = gradle.read_text(encoding="utf-8")
+if "firebase-messaging" not in g:
+    g = re.sub(r"dependencies\s*\{", 'dependencies {\n    implementation "com.google.firebase:firebase-messaging:24.1.2"', g, count=1)
+    gradle.write_text(g, encoding="utf-8")
+gs = root / "google-services.json"
+if gs.exists():
+    shutil.copy(gs, android / "app/google-services.json")
+    print("Firebase : google-services.json copié, notifications FCM activées.")
+else:
+    print("ATTENTION : app/google-services.json introuvable, notifications Firebase désactivées (la vérification périodique reste active).")
 
 # 3d. Signature : on indique la clé fixe (app/debug.keystore) directement à Gradle.
 # Sans cela, Gradle peut en fabriquer une nouvelle à chaque construction, et Android refuse alors
