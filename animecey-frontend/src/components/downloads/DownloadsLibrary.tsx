@@ -339,7 +339,7 @@ export function DownloadsLibrary({ videos, playingId, onPlay, onDelete }: Props)
 
       {/* Barre d'actions de la sélection */}
       {selecting && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border-subtle bg-background/95 backdrop-blur px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] md:bottom-0 z-40 border-t border-border-subtle bg-background/95 backdrop-blur px-4 py-3 md:pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto max-w-5xl flex items-center gap-2">
             <button
               onClick={() => toggle(allIdsHere)}
@@ -360,7 +360,7 @@ export function DownloadsLibrary({ videos, playingId, onPlay, onDelete }: Props)
           </div>
         </div>
       )}
-      {selecting && <div className="h-20" aria-hidden />}
+      {selecting && <div className="h-36 md:h-20" aria-hidden />}
 
       {/* Confirmation */}
       <AlertDialog open={confirm !== null} onOpenChange={(o) => !o && !busy && setConfirm(null)}>
