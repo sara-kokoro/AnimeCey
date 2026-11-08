@@ -147,6 +147,15 @@ export function OfflineApp() {
             {list.length > 0 && ` · ${list.length} épisode${list.length > 1 ? "s" : ""} · ${fmtSize(totalSize)}`}
           </p>
 
+          <button
+            onClick={() => {
+              location.href = SITE;
+            }}
+            style={{ marginTop: 12, height: 40, padding: "0 20px", borderRadius: 999, border: 0, background: "#f97316", color: "#111", fontWeight: 700, fontSize: 14 }}
+          >
+            Réessayer la connexion
+          </button>
+
           <OfflineAdSlot className="mt-4" />
 
           <DonateCard compact className="mt-4" />

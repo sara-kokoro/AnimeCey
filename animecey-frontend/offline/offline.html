@@ -5,14 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0a" />
     <title>Magi-Stream — Hors connexion</title>
-    <!-- Mêmes polices que le site -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap"
-    />
-    <!-- Filet de sécurité : si la page ne démarre pas, on affiche la cause au lieu d'un écran noir. -->
+    <!-- (placé AVANT toute feuille de style externe, sinon il serait bloqué lui aussi)
+         Filet de sécurité : si la page ne démarre pas, on affiche la cause au lieu d'un écran noir. -->
     <script>
       (function () {
         var errs = [];
@@ -60,6 +54,12 @@
         }, 4000);
       })();
     </script>
+    <!-- Mêmes polices que le site. NON bloquantes : sur un Wi-Fi sans internet la requête ne répond jamais,
+         et une feuille de style normale empêche tout affichage (écran noir) tant qu'elle n'a pas répondu. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" /></noscript>
   </head>
   <body>
     <div id="root"></div>

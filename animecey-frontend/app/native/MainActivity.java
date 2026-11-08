@@ -9,6 +9,8 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
@@ -25,6 +27,45 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
     private long lastBack = 0;
+
+    /** Page hors connexion embarquée dans l'APK (app/www/offline.html), servie par Capacitor en https://localhost. */
+    private static final String OFFLINE_URL = "https://localhost/offline.html";
+    /** Au-delà de ce délai sans réponse du site (progression < 25 %), on bascule sur la page hors connexion. */
+    private static final long SITE_TIMEOUT_MS = 12000;
+
+    /** true si le téléphone a un accès réel à internet (un Wi-Fi sans internet donne false). */
+    private boolean hasInternet() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+            Network n = cm.getActiveNetwork();
+            if (n == null) return false;
+            NetworkCapabilities c = cm.getNetworkCapabilities(n);
+            return c != null
+                    && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        } catch (Exception e) {
+            return true; // doute : on laisse le site essayer
+        }
+    }
+
+    /**
+     * Si le site ne répond pas du tout (Wi-Fi sans internet, réseau bloqué), le chargement peut durer très
+     * longtemps sur un écran noir : on bascule alors sur la page hors connexion.
+     */
+    private void watchSiteLoad(final WebView wv) {
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String u = wv.getUrl();
+                    boolean onSiteOrBlank = u == null || u.equals("about:blank") || u.startsWith("https://www.magi-stream.online");
+                    if (onSiteOrBlank && wv.getProgress() < 25) wv.loadUrl(OFFLINE_URL);
+                } catch (Exception ignored) {
+                    // page déjà détruite : rien à faire
+                }
+            }
+        }, SITE_TIMEOUT_MS);
+    }
 
     /**
      * Petite interface pour la page « hors connexion » (app/www/offline.html).
@@ -224,6 +265,16 @@ public class MainActivity extends BridgeActivity {
             webView.addJavascriptInterface(new OfflineApi(getApplicationContext()), "MagiNative");
         } catch (Exception ignored) {
             // la page hors connexion affichera alors un message d'erreur
+        }
+
+        // Pas d'accès réel à internet : page hors connexion tout de suite, au lieu d'attendre sur un écran noir
+        // que le chargement du site échoue. Sinon, on surveille que le site répond bien.
+        try {
+            WebView wv = getBridge().getWebView();
+            if (!hasInternet()) wv.loadUrl(OFFLINE_URL);
+            else watchSiteLoad(wv);
+        } catch (Exception ignored) {
+            // pont indisponible : Capacitor garde son comportement par défaut
         }
 
         readPath(getIntent());
