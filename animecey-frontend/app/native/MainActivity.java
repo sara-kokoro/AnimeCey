@@ -35,6 +35,16 @@ public class MainActivity extends BridgeActivity {
 
     private void readPath(Intent i) {
         if (i == null) return;
+        // lien https://www.magi-stream.online/... ouvert depuis Telegram, WhatsApp, un navigateur…
+        android.net.Uri data = i.getData();
+        if (Intent.ACTION_VIEW.equals(i.getAction()) && data != null
+                && "https".equals(data.getScheme()) && "www.magi-stream.online".equals(data.getHost())) {
+            String path = data.getEncodedPath() == null || data.getEncodedPath().isEmpty() ? "/" : data.getEncodedPath();
+            if (data.getEncodedQuery() != null) path += "?" + data.getEncodedQuery();
+            pendingPath = path;
+            i.setData(null);
+            return;
+        }
         String p = i.getStringExtra("magi_path");
         if (p != null && p.startsWith("/")) {
             pendingPath = p;
@@ -163,6 +173,32 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public String getOfflineAd() {
             return ctx.getSharedPreferences(MagiNotifyWorker.PREFS, Context.MODE_PRIVATE).getString("offline_ad", "");
+        }
+
+        /** Vignettes paysage des animés téléchargés (data-URL JPEG réduites), par identifiant d'animé. */
+        @JavascriptInterface
+        public void saveCover(String animeId, String dataUrl) {
+            if (animeId == null || dataUrl == null || dataUrl.length() > 400_000) return;
+            ctx.getSharedPreferences("magi_covers", Context.MODE_PRIVATE).edit().putString(animeId, dataUrl).apply();
+        }
+
+        @JavascriptInterface
+        public void removeCover(String animeId) {
+            if (animeId == null) return;
+            ctx.getSharedPreferences("magi_covers", Context.MODE_PRIVATE).edit().remove(animeId).apply();
+        }
+
+        @JavascriptInterface
+        public String getCovers() {
+            java.util.Map<String, ?> all = ctx.getSharedPreferences("magi_covers", Context.MODE_PRIVATE).getAll();
+            org.json.JSONObject o = new org.json.JSONObject();
+            try {
+                for (java.util.Map.Entry<String, ?> e : all.entrySet()) {
+                    if (e.getValue() instanceof String) o.put(e.getKey(), (String) e.getValue());
+                }
+            } catch (Exception ignored) {
+            }
+            return o.toString();
         }
 
         /** Garde l'écran allumé pendant la lecture. */

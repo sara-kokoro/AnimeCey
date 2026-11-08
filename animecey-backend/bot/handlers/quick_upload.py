@@ -549,8 +549,11 @@ def register(bot: Client):
 
         raw_caption = message.caption or ""
         replace_ok = bool(_REPLACE_RE.search(raw_caption))  # mot REMPLACER dans la légende de ce fichier
-        p = parse_caption(_REPLACE_RE.sub(" ", raw_caption))
-        if p.episode is None or p.lang is None or p.title is None or p.slot_defaulted:
+        caption_text = _REPLACE_RE.sub(" ", raw_caption)
+        p = parse_caption(caption_text)
+        # Le nom du fichier n'est lu que si le fichier n'a AUCUNE légende (pas même un mot).
+        # Dès qu'il y a une légende, on ne s'appuie que sur elle.
+        if not caption_text.strip():
             p = merge_missing(p, parse_caption(os.path.splitext(fname)[0], is_filename=True))
 
         # Options de /anime (langue / emplacement forcés), tant que l'animé fixé est actif

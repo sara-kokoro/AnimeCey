@@ -15,9 +15,7 @@ import { AnimeCard } from "@/components/anime/AnimeCard";
 import { CoverflowCarousel } from "@/components/home/CoverflowCarousel";
 import { PagedSlider } from "@/components/home/PagedSlider";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
-import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import { AdSlot } from "@/components/ads/AdSlot";
-import { SocialBarAd } from "@/components/ads/SocialBarAd";
 import { PushAd } from "@/components/ads/PushAd";
 import { InPagePushAd } from "@/components/ads/InPagePushAd";
 import { AppDownloadButton } from "@/components/AppDownloadButton";
@@ -107,7 +105,6 @@ export default function Home() {
       <HeroCarousel />
 
       <main className="mx-auto max-w-7xl px-3 md:px-6">
-        <SocialBarAd />
         <PushAd />
         <InPagePushAd />
         <AppDownloadButton />
@@ -136,7 +133,6 @@ export default function Home() {
 
         <LatestReleasesRail />
 
-        <AdsterraBanner format="banner" className="mt-4 mb-2" />
         <div id="animes" className="scroll-mt-24" />
 
 
@@ -169,7 +165,6 @@ export default function Home() {
           <PagedSlider items={latest.data} isLoading={latest.isLoading} />
         </Section>
 
-        <AdsterraBanner format="native" className="my-8" />
 
         <Section title={<Title icon={<Star className="w-5 h-5 text-primary" />}>Les mieux notés</Title>} href="/catalogue?sort=score">
           <CoverflowCarousel

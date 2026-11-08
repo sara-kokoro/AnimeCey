@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 SOURCE = "tmcooper"
 ENABLED = os.getenv("CATALOG_SYNC_ENABLED", "true").lower() in ("true", "1", "yes")
-INTERVAL_MIN = max(1, int(os.getenv("CATALOG_SYNC_INTERVAL_MIN", "30")))
+INTERVAL_MIN = max(1, int(os.getenv("CATALOG_SYNC_INTERVAL_MIN", "60")))
 RESCRAPE_HOURS = max(0.0, float(os.getenv("CATALOG_RESCRAPE_HOURS", "168")))
 MIN_TITLES = max(1, int(os.getenv("CATALOG_MIN_TITLES", "50")))
 RETRY_SEC = 300

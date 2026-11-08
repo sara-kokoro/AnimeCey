@@ -21,7 +21,6 @@ import { ensureSeason, fetchSeasonLabels } from "@/api/catalog";
 import { addFavorite, fetchFavorites, removeFavorite } from "@/api/users";
 import { useAuthStore } from "@/stores/auth";
 import { ReportButton } from "@/components/report/ReportButton";
-import { SocialBarAd } from "@/components/ads/SocialBarAd";
 import { OnClickAd } from "@/components/ads/OnClickAd";
 import { PushAd } from "@/components/ads/PushAd";
 import { AdSlot } from "@/components/ads/AdSlot";
@@ -303,7 +302,6 @@ export default function AnimeDetail() {
       </section>
 
       <main className="mx-auto max-w-5xl px-4 md:px-6 pb-20">
-        <SocialBarAd />
         <OnClickAd />
         <PushAd />
 

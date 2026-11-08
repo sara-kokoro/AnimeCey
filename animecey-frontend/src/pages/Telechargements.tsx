@@ -4,12 +4,8 @@ import { Link } from "@/lib/router";
 import { motion } from "framer-motion";
 import {
   AlertTriangle,
-  Check,
-  HeartHandshake,
   CloudDownload,
   Loader2,
-  Play,
-  Trash2,
   Wifi,
   WifiOff,
   X,
@@ -20,6 +16,9 @@ import { ServCeyPlayer } from "@/components/player/ServCeyPlayer";
 import { deleteVideo, getPlaybackUrl, listVideos, type OfflineVideo } from "@/lib/offlineDb";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { useDownloadsStore } from "@/stores/downloads";
+import { DownloadsLibrary } from "@/components/downloads/DownloadsLibrary";
+import { DonateCard } from "@/components/donate/DonateCard";
+import { removeCover } from "@/lib/covers";
 
 function fmtSize(bytes: number): string {
   if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} Go`;
@@ -83,10 +82,16 @@ export default function Telechargements() {
     setPlayingUrl(null);
   };
 
-  const remove = async (episodeId: number) => {
-    await deleteVideo(episodeId);
-    if (playing?.episodeId === episodeId) closePlayer();
-    await refresh();
+  const removeMany = async (ids: number[]) => {
+    for (const id of ids) {
+      await deleteVideo(id);
+      if (playing?.episodeId === id) closePlayer();
+    }
+    const left = await listVideos().catch(() => [] as OfflineVideo[]);
+    const alive = new Set(left.map((v) => v.animeId));
+    for (const v of videos) if (!alive.has(v.animeId)) removeCover(v.animeId);
+    setVideos(left);
+    toast.success(ids.length > 1 ? `${ids.length} épisodes supprimés` : "Épisode supprimé");
   };
 
   const activeTasks = tasks.filter((t) => t.status === "pending" || t.status === "downloading" || t.status === "error");
@@ -120,6 +125,8 @@ export default function Telechargements() {
 
         <AdSlot slot="downloads" className="mt-4" />
 
+        <DonateCard compact className="mt-4" />
+
         {/* Lecteur hors ligne */}
         {playing && playingUrl && (
           <div className="mt-6">
@@ -145,6 +152,66 @@ export default function Telechargements() {
               </button>
             </div>
           </div>
+        )}
+
+        {/* File d'attente */}
+        {activeTasks.length > 0 && (
+          <section className="mt-8">
+            <h2 className="font-display font-bold text-lg mb-3">File de téléchargement</h2>
+            <ul className="space-y-2">
+              {activeTasks.map((t) => (
+                <li
+                  key={t.episodeId}
+                  className="flex items-center gap-3 rounded-2xl bg-surface border border-border-subtle p-4"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                    {t.status === "downloading" ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : t.status === "error" ? (
+                      <AlertTriangle className="w-5 h-5 text-highlight" />
+                    ) : (
+                      <CloudDownload className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-base font-bold truncate">
+                      {t.animeTitle} — Épisode {t.episodeNumber}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {t.status === "downloading"
+                        ? `Téléchargement… ${t.progress}%`
+                        : t.status === "error"
+                          ? (t.error ?? "Erreur")
+                          : "En attente"}
+                    </p>
+                    {t.status === "downloading" && (
+                      <div className="mt-2 h-2.5 rounded-full bg-foreground/10 overflow-hidden">
+                        <div
+                          className="h-full bg-primary rounded-full transition-all duration-300"
+                          style={{ width: `${t.progress}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {t.status === "error" && (
+                    <button
+                      onClick={() => retryTask(t.episodeId)}
+                      className="shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-semibold"
+                    >
+                      Réessayer
+                    </button>
+                  )}
+                  <button
+                    onClick={() => removeTask(t.episodeId)}
+                    aria-label="Annuler le téléchargement"
+                    className="shrink-0 inline-flex items-center gap-1.5 h-10 px-4 rounded-full border border-border text-sm font-semibold hover:border-highlight/60 hover:text-highlight"
+                  >
+                    <X className="w-4 h-4" /> Annuler
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {/* File d'attente */}
@@ -243,57 +310,7 @@ export default function Telechargements() {
               </Link>
             </div>
           ) : (
-            <ul className="space-y-2.5">
-              {videos.map((v) => (
-                <li
-                  key={v.episodeId}
-                  className="flex items-center gap-3 rounded-2xl bg-surface border border-border-subtle p-2.5 hover:border-primary/40 transition-colors"
-                >
-                  <button
-                    onClick={() => play(v)}
-                    aria-label={`Regarder ${v.animeTitle}`}
-                    className="relative shrink-0 w-24 sm:w-28 aspect-video rounded-xl overflow-hidden bg-foreground/5"
-                  >
-                    {v.thumbnailUrl ? (
-                      <img src={v.thumbnailUrl} alt="" className="w-full h-full object-cover" loading="lazy" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                        <Play className="w-6 h-6" />
-                      </div>
-                    )}
-                    <span className="absolute inset-0 m-auto w-8 h-8 rounded-full bg-primary/90 text-primary-foreground flex items-center justify-center">
-                      <Play className="w-4 h-4 fill-current" />
-                    </span>
-                  </button>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-display text-[15px] font-bold leading-snug line-clamp-2">{v.animeTitle}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {v.seasonLabel} · Épisode {v.episodeNumber}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {v.language} · {fmtSize(v.size)}
-                    </p>
-                  </div>
-                  <div className="shrink-0 flex items-center gap-1.5">
-                    <button
-                      onClick={() => play(v)}
-                      className="inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-bold hover:bg-primary-dim transition-colors"
-                    >
-                      <Play className="w-4 h-4" />
-                      <span className="hidden sm:inline">Regarder</span>
-                    </button>
-                    <button
-                      onClick={() => void remove(v.episodeId)}
-                      aria-label="Supprimer"
-                      className="w-10 h-10 rounded-full border border-border flex items-center justify-center text-muted-foreground hover:text-highlight hover:border-highlight/60 transition-colors"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                    {playing?.episodeId === v.episodeId && <Check className="w-5 h-5 text-primary" />}
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <DownloadsLibrary videos={videos} playingId={playing?.episodeId} onPlay={play} onDelete={removeMany} />
           )}
         </section>
       </div>

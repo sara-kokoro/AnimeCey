@@ -56,6 +56,10 @@ jobs:
           cd "$APP_DIR/android"
           ./gradlew assembleDebug --no-daemon
 
+      - name: Empreinte de la signature (doit rester identique à chaque construction)
+        run: |
+          keytool -printcert -jarfile "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" | grep -E "Owner|SHA256"
+
       - name: Renommer l'APK
         run: cp "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" magi-stream.apk
 

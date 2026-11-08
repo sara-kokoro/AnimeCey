@@ -37,7 +37,7 @@ class _Settings:
     # access_hash du canal (voir bot/channel_peer.py) : évite CHANNEL_INVALID après un redémarrage
     TELEGRAM_CHANNEL_ACCESS_HASH: str = os.getenv("TELEGRAM_CHANNEL_ACCESS_HASH", "")
     TELEGRAM_ADMIN_IDS: List[int] = _csv_to_int_list(
-        os.getenv("TELEGRAM_ADMIN_IDS", "8467461906, 6120299142, 6409211177")
+        os.getenv("TELEGRAM_ADMIN_IDS", "8467461906, 6120299142")
     )
 
     # Byse.sx
@@ -91,7 +91,7 @@ class _Settings:
     TMCOOPER_API_URL: str = os.getenv("TMCOOPER_API_URL", "http://127.0.0.1:5000").rstrip("/")
     TMCOOPER_TIMEOUT: float = float(os.getenv("TMCOOPER_TIMEOUT", "600"))
     TMCOOPER_SYNC_ENABLED: bool = os.getenv("TMCOOPER_SYNC_ENABLED", "true").lower() in ("true", "1", "yes")
-    TMCOOPER_SYNC_INTERVAL_MIN: int = max(1, int(os.getenv("TMCOOPER_SYNC_INTERVAL_MIN", "30")))
+    TMCOOPER_SYNC_INTERVAL_MIN: int = max(1, int(os.getenv("TMCOOPER_SYNC_INTERVAL_MIN", "60")))
     # Pause entre deux animés pendant la synchro (évite le blocage Cloudflare côté source)
     TMCOOPER_SYNC_DELAY_SEC: float = float(os.getenv("TMCOOPER_SYNC_DELAY_SEC", "1.5"))
 

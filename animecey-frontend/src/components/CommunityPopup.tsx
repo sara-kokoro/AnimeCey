@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HeartHandshake, Send, Smartphone, X } from "lucide-react";
+import { Facebook, HeartHandshake, MessageCircle, Send, Smartphone, X } from "lucide-react";
 import { Link, useLocation } from "@/lib/router";
 import { APP } from "@/config/app";
 import { SOCIAL } from "@/config/social";
@@ -62,17 +62,37 @@ export function CommunityPopup() {
           Rejoins-nous pour les nouveautés, les corrections et les sorties du moment.
         </p>
 
-        {SOCIAL.telegram && (
+        <div className="mt-5 grid gap-2">
+          {SOCIAL.telegram && (
+            <a
+              href={SOCIAL.telegram}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={close}
+              className="flex items-center justify-center gap-2 h-12 rounded-2xl bg-primary text-primary-foreground font-bold hover:bg-primary-dim transition-colors"
+            >
+              <Send className="w-5 h-5" /> Telegram
+            </a>
+          )}
           <a
-            href={SOCIAL.telegram}
+            href={SOCIAL.whatsapp}
             target="_blank"
             rel="noopener noreferrer"
             onClick={close}
-            className="mt-5 flex items-center justify-center gap-2 h-12 rounded-2xl bg-primary text-primary-foreground font-bold hover:bg-primary-dim transition-colors"
+            className="flex items-center justify-center gap-2 h-12 rounded-2xl border border-border bg-background font-bold hover:border-primary/50 transition-colors"
           >
-            <Send className="w-5 h-5" /> Nous suivre sur Telegram
+            <MessageCircle className="w-5 h-5 text-primary" /> Chaîne WhatsApp
           </a>
-        )}
+          <a
+            href={SOCIAL.facebook}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={close}
+            className="flex items-center justify-center gap-2 h-12 rounded-2xl border border-border bg-background font-bold hover:border-primary/50 transition-colors"
+          >
+            <Facebook className="w-5 h-5 text-primary" /> Facebook
+          </a>
+        </div>
 
         <div className="mt-5 border-t border-border-subtle pt-4">
           <p className="text-[11px] tracking-widest uppercase text-muted-foreground font-semibold">Aller plus loin</p>

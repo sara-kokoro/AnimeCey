@@ -13,6 +13,8 @@ import { getStreamUrl } from "@/api/episodes";
 import { CHUNK_SIZE, deleteVideo, getPartial, hasVideo, putChunk, saveVideo } from "@/lib/offlineDb";
 import { isNativeApp, nativePlugin, type NativeItem } from "@/lib/nativeDownloads";
 import { RICHADS } from "@/config/ads";
+import { compareEpisodes } from "@/lib/downloadOrder";
+import { ensureCover } from "@/lib/covers";
 
 export interface DownloadTask {
   episodeId: number;
@@ -99,7 +101,11 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
       if (fresh.some((t) => t.episodeId === item.episodeId)) continue;
       fresh.push({ ...item, status: "pending", progress: 0 });
     }
+    // Téléchargement dans l'ordre des épisodes (saison 1 épisode 1, puis 2, 3...), quel que soit l'ordre des clics
+    fresh.sort(compareEpisodes);
     if (fresh.length > 0) {
+      // vignette paysage de chaque animé, récupérée en arrière-plan (une seule fois par animé)
+      [...new Set(fresh.map((t) => t.animeId))].forEach((id) => void ensureCover(id));
       set((s) => ({ tasks: [...s.tasks.filter((t) => !fresh.some((f) => f.episodeId === t.episodeId)), ...fresh] }));
       if (isNativeApp()) {
         await syncNativeDownloads();

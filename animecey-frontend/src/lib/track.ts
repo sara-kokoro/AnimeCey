@@ -20,6 +20,14 @@ const platform = () => (isNativeApp() ? "app" : "web");
 /** À l'ouverture du site / de l'app : compte l'appareil (utilisé par /stats dans le bot). */
 export function trackPing(): void {
   if (typeof window === "undefined") return;
+  // au plus une fois toutes les 6 h par appareil : évite d'écrire dans la base à chaque ouverture
+  try {
+    const last = Number(localStorage.getItem("magi:pingAt") ?? 0);
+    if (Date.now() - last < 6 * 3_600_000) return;
+    localStorage.setItem("magi:pingAt", String(Date.now()));
+  } catch {
+    /* stockage indisponible : on envoie */
+  }
   void api.post("/track/ping", { device_id: deviceId(), platform: platform() }).catch(() => undefined);
 }
 

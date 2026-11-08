@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import random
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -43,18 +44,26 @@ def serves_slot(ad: AdCampaign, slot: str) -> bool:
     return "all" in places or slot in places
 
 
+_ROWS: list = []
+_ROWS_AT: float = -1e9
+
+
 @router.get("")
 async def pick_ad(request: Request, slot: str = Query(..., min_length=1, max_length=20), db: AsyncSession = Depends(get_db)):
     """La pub à afficher dans un emplacement (tirée au hasard s'il y en a plusieurs), ou null."""
     if slot not in AD_SLOTS:
         raise HTTPException(status_code=422, detail="Emplacement inconnu")
     now = datetime.now(timezone.utc)
-    rows = (
-        await db.execute(
-            select(AdCampaign.id, AdCampaign.placements, AdCampaign.text, AdCampaign.button_text,
-                   AdCampaign.mime, AdCampaign.ends_at).where(*live_filter(now))
-        )
-    ).all()
+    global _ROWS_AT, _ROWS
+    if time.monotonic() - _ROWS_AT > 30:  # pubs actives : une requête SQL toutes les 30 s au plus
+        _ROWS = (
+            await db.execute(
+                select(AdCampaign.id, AdCampaign.placements, AdCampaign.text, AdCampaign.button_text,
+                       AdCampaign.mime, AdCampaign.ends_at).where(*live_filter(now))
+            )
+        ).all()
+        _ROWS_AT = time.monotonic()
+    rows = [r for r in _ROWS if not r.ends_at or r.ends_at > now]
     candidates = [r for r in rows if "all" in (r.placements or []) or slot in (r.placements or [])]
     out: dict = {"ad": None, "contact": CONTACT}
     if candidates:

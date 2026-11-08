@@ -34,6 +34,17 @@
     .don .w small{display:block;color:var(--mut);font-size:11px;margin-top:2px}
     .don .a{margin:8px 0;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:10px;font:12px ui-monospace,monospace;word-break:break-all;user-select:all}
     .don .warn{font-size:11px;color:var(--mut);margin:14px 0 0}
+    .fold{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .fold .f{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden;cursor:pointer;display:block;padding:0;text-align:left;font-weight:400}
+    .fold .f .im{aspect-ratio:16/9;background:#222 center/cover no-repeat}
+    .fold .f .tx{padding:8px 10px}
+    .fold .f b{font-size:13px;line-height:1.25;display:block}
+    .fold .f span{color:var(--mut);font-size:11px}
+    .crumb{display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14px;font-weight:700}
+    .crumb button{width:38px;height:38px;padding:0;border:1px solid var(--line);flex:none}
+    .heart{display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,#f9731626,#0000);border:1px solid #f9731666;border-radius:20px;padding:14px;margin:0 0 18px}
+    .heart svg{width:44px;height:44px;flex:none;background:var(--pri);color:#111;border-radius:14px;padding:10px}
+    .heart b{font-size:15px;display:block}.heart small{color:var(--mut);font-size:12px;line-height:1.35;display:block;margin-top:2px}
     .empty{border:1px dashed var(--line);border-radius:16px;padding:24px;text-align:center;color:var(--mut)}
 
     /* Lecteur plein écran */
@@ -64,6 +75,10 @@
   <h1>Vous êtes hors connexion</h1>
   <p>Regarde tes épisodes téléchargés, ou reconnecte-toi pour retrouver tout le catalogue.</p>
   <div class="row"><button class="pri" id="retry">Réessayer la connexion</button><button id="gdon" style="background:#161616;border:1px solid #2a2a2a">Faire un don</button></div>
+  <div class="heart"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+    <div style="flex:1"><b>Fais-nous un don ❤️</b><small>Ça nous aide à améliorer Magi-Stream et à le garder en ligne.</small></div>
+    <button class="pri" id="gdon2" style="padding:9px 14px">Don</button></div>
+  <div id="crumb"></div>
   <ul id="list"></ul>
 
   <div id="adslot"></div>
@@ -101,7 +116,7 @@
   <script>
     var SITE = "https://www.magi-stream.online/";
     var $ = function (id) { return document.getElementById(id); };
-    $("gdon").onclick = function () { $("don").scrollIntoView({ behavior: "smooth" }); };
+    $("gdon").onclick = $("gdon2").onclick = function () { $("don").scrollIntoView({ behavior: "smooth" }); };
     $("retry").onclick = function () { location.href = SITE; };
     window.addEventListener("online", function () { location.href = SITE; });
 
@@ -124,19 +139,61 @@
     }
 
     /* ---------- Liste ---------- */
-    function render(items) {
-      var ul = $("list");
-      ul.innerHTML = "";
-      if (!items.length) { ul.innerHTML = '<div class="empty">Aucun épisode téléchargé pour le moment.</div>'; return; }
-      items.forEach(function (it) {
-        var meta = {};
-        try { meta = JSON.parse(it.meta || "{}"); } catch (e) {}
+    var ALL = [], nav = { a: null, s: null };
+    function metaOf(it) { try { return JSON.parse(it.meta || "{}"); } catch (e) { return {}; } }
+    function seasonNum(l) { var m = /\d+/.exec(l || ""); return m ? parseInt(m[0], 10) : 0; }
+    function covers() { try { return JSON.parse(window.MagiNative.getCovers()); } catch (e) { return {}; } }
+    function render(items) { if (items) ALL = items; draw(); }
+    function folder(title, sub, img, onclick) {
+      var f = document.createElement("button"); f.className = "f";
+      var im = document.createElement("div"); im.className = "im"; if (img) im.style.backgroundImage = "url(" + img + ")";
+      var tx = document.createElement("div"); tx.className = "tx";
+      var b = document.createElement("b"); b.textContent = title; var sp = document.createElement("span"); sp.textContent = sub;
+      tx.appendChild(b); tx.appendChild(sp); f.appendChild(im); f.appendChild(tx); f.onclick = onclick; return f;
+    }
+    function draw() {
+      var ul = $("list"), cr = $("crumb");
+      ul.innerHTML = ""; cr.innerHTML = ""; ul.className = "";
+      if (!ALL.length) { ul.innerHTML = '<div class="empty">Aucun épisode téléchargé pour le moment.</div>'; return; }
+      var animes = {};
+      ALL.forEach(function (it) {
+        var m = metaOf(it), k = String(m.animeId || m.animeTitle || "?");
+        (animes[k] = animes[k] || { id: k, title: m.animeTitle || "Animé", thumb: m.thumbnailUrl, items: [] }).items.push({ it: it, m: m });
+      });
+      var cov = covers();
+      var A = nav.a !== null ? animes[nav.a] : null;
+      if (!A) {
+        nav.a = null; nav.s = null; ul.className = "fold";
+        Object.keys(animes).sort(function (x, y) { return animes[x].title.localeCompare(animes[y].title); }).forEach(function (k) {
+          var g = animes[k], size = g.items.reduce(function (n, e) { return n + (e.it.size || 0); }, 0);
+          ul.appendChild(folder(g.title, g.items.length + " ép. · " + fmt(size), cov[k] || g.thumb, function () { nav.a = k; nav.s = null; draw(); }));
+        });
+        return;
+      }
+      var seasons = {};
+      A.items.forEach(function (e) { var l = e.m.seasonLabel || "Saison 1"; (seasons[l] = seasons[l] || []).push(e); });
+      var labels = Object.keys(seasons).sort(function (x, y) { return seasonNum(x) - seasonNum(y); });
+      var multi = labels.length > 1;
+      if (!multi) nav.s = labels[0]; else if (nav.s && !seasons[nav.s]) nav.s = null;
+      var back = document.createElement("button"); back.innerHTML = "‹"; back.setAttribute("aria-label", "Retour");
+      back.onclick = function () { if (nav.s && multi) nav.s = null; else { nav.a = null; nav.s = null; } draw(); };
+      var tt = document.createElement("span"); tt.textContent = A.title + (nav.s && multi ? " › " + nav.s : "");
+      cr.className = "crumb"; cr.appendChild(back); cr.appendChild(tt);
+      if (!nav.s) {
+        ul.className = "fold";
+        labels.forEach(function (l) {
+          ul.appendChild(folder(l, seasons[l].length + " ép.", cov[A.id] || A.thumb, function () { nav.s = l; draw(); }));
+        });
+        return;
+      }
+      seasons[nav.s].sort(function (x, y) { return (x.m.episodeNumber || 0) - (y.m.episodeNumber || 0); }).forEach(function (e) {
+        var it = e.it, meta = e.m;
         var title = (meta.animeTitle || "Épisode") + " — Ép. " + (meta.episodeNumber || "?");
         var li = document.createElement("li");
         var t = document.createElement("div"); t.className = "grow";
-        var b = document.createElement("b"); b.textContent = title;
+        var b = document.createElement("b"); b.textContent = "Épisode " + (meta.episodeNumber || "?");
         var s = document.createElement("span");
-        s.textContent = [meta.seasonLabel, meta.language, fmt(it.size || 0)].filter(Boolean).join(" · ");
+        s.textContent = [meta.language, fmt(it.size || 0)].filter(Boolean).join(" · ");
         t.appendChild(b); t.appendChild(s);
         var p = loadPos(it.episodeId);
         if (p && p.d) {

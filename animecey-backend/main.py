@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from services.httpcache import ResponseCacheMiddleware
 
 from config import settings
 from database import init_db
@@ -170,6 +171,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(ResponseCacheMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,

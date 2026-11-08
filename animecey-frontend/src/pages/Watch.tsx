@@ -15,7 +15,6 @@ import { VignetteAd } from "@/components/ads/VignetteAd";
 import { OnClickAd } from "@/components/ads/OnClickAd";
 import { PushAd } from "@/components/ads/PushAd";
 import { InPagePushAd } from "@/components/ads/InPagePushAd";
-import { AdsterraBanner } from "@/components/ads/AdsterraBanner";
 import { trackView } from "@/lib/track";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { EpisodeCard } from "@/components/anime/EpisodeCard";
@@ -458,7 +457,6 @@ export default function Watch() {
             )}
           </section>
 
-          <AdsterraBanner format="native" className="mt-8" />
 
           <div className="mt-8">
             <CommentSection episodeId={episode.id} />

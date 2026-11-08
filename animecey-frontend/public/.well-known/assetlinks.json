@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "online.magistream.app",
+      "sha256_cert_fingerprints": [
+        "6B:9B:CA:AD:D2:0F:82:5B:76:2A:8A:07:6E:D4:00:8A:99:2B:CF:EA:15:5A:EB:25:1E:2A:89:09:60:4D:16:D9"
+      ]
+    }
+  }
+]

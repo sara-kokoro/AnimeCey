@@ -5,6 +5,8 @@
  */
 export const SOCIAL = {
   telegram: ((import.meta.env.VITE_TELEGRAM_URL as string | undefined) ?? "https://t.me/MagiStream").trim(),
+  whatsapp: "https://whatsapp.com/channel/0029VbENnAH05MUZqTTOQp1t",
+  facebook: "https://www.facebook.com/profile.php?id=61596306176125",
 };
 
 export interface Wallet {
