@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <title>Magi-Stream — Hors connexion</title>
+    <!-- (placé AVANT toute feuille de style externe, sinon il serait bloqué lui aussi)
+         Filet de sécurité : si la page ne démarre pas, on affiche la cause au lieu d'un écran noir. -->
+    <script>
+      (function () {
+        var errs = [];
+        function add(m) {
+          errs.push(String(m));
+        }
+        window.addEventListener(
+          "error",
+          function (e) {
+            var t = e.target;
+            if (t && t !== window && (t.src || t.href)) {
+              if (String(t.src || t.href).indexOf("fonts.g") === -1) add("Fichier non chargé : " + (t.src || t.href));
+            } else add((e.message || "Erreur") + (e.filename ? " (" + e.filename.split("/").pop() + ":" + e.lineno + ")" : ""));
+          },
+          true
+        );
+        window.addEventListener("unhandledrejection", function (e) {
+          add("Promesse refusée : " + ((e.reason && e.reason.message) || e.reason));
+        });
+        setTimeout(function () {
+          var root = document.getElementById("root");
+          if (!root || document.documentElement.getAttribute("data-booted")) return; // React a démarré : rien à signaler
+          var m = navigator.userAgent.match(/Chrome\/(\d+)/);
+          var box = document.createElement("div");
+          box.style.cssText =
+            "padding:calc(env(safe-area-inset-top) + 24px) 20px 24px;color:#f5f5f5;font-family:system-ui,sans-serif";
+          var h = document.createElement("h1");
+          h.style.cssText = "font-size:20px;font-weight:800;margin:0 0 8px";
+          h.textContent = "La page hors connexion n'a pas pu démarrer";
+          var p = document.createElement("pre");
+          p.style.cssText =
+            "white-space:pre-wrap;word-break:break-word;font-size:12px;background:#1a1a1a;padding:12px;border-radius:12px";
+          p.textContent =
+            "WebView : Chrome " + (m ? m[1] : "?") + "\n" + (errs.length ? errs.join("\n") : "Aucune erreur signalée (le script n'a peut-être pas été lancé).");
+          var b = document.createElement("button");
+          b.textContent = "Réessayer";
+          b.style.cssText = "height:44px;padding:0 20px;border-radius:999px;border:0;background:#f97316;color:#fff;font-weight:700";
+          b.onclick = function () {
+            location.reload();
+          };
+          box.appendChild(h);
+          box.appendChild(p);
+          box.appendChild(b);
+          document.body.appendChild(box);
+        }, 4000);
+      })();
+    </script>
+    <!-- Mêmes polices que le site. NON bloquantes : sur un Wi-Fi sans internet la requête ne répond jamais,
+         et une feuille de style normale empêche tout affichage (écran noir) tant qu'elle n'a pas répondu. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" /></noscript>
+  <link rel="stylesheet" crossorigin href="./assets/offline-CWcXlEzp.css">
+</head>
+  <body>
+    <div id="root">
+      <!-- Contenu de secours, visible AVANT que React démarre (React le remplace). Jamais d'écran noir muet. -->
+      <div id="boot" style="padding:calc(env(safe-area-inset-top) + 32px) 20px;color:#f5f5f5;font-family:system-ui,sans-serif">
+        <div style="font-size:22px;font-weight:800">Magi-<span style="color:#f97316">Stream</span></div>
+        <p style="opacity:.7;font-size:14px;margin:8px 0 0">Chargement de tes téléchargements…</p>
+      </div>
+    </div>
+    <script type="module" crossorigin src="./assets/inexistant.js"></script>
+  </body>
+</html>

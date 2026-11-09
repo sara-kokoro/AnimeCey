@@ -30,6 +30,11 @@ try {
 class Garde extends Component<{ children: ReactNode }, { erreur: Error | null }> {
   state = { erreur: null as Error | null };
 
+  componentDidMount() {
+    // Signale au filet de sécurité (offline.html) que React a bien démarré.
+    document.documentElement.setAttribute("data-booted", "1");
+  }
+
   static getDerivedStateFromError(erreur: Error) {
     return { erreur };
   }

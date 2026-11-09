@@ -28,8 +28,10 @@
         });
         setTimeout(function () {
           var root = document.getElementById("root");
-          if (!root || root.childNodes.length > 0) return;
+          if (!root || document.documentElement.getAttribute("data-booted")) return; // React a démarré : rien à signaler
           var m = navigator.userAgent.match(/Chrome\/(\d+)/);
+          var bt = document.getElementById("boot");
+          if (bt) bt.style.display = "none";
           var box = document.createElement("div");
           box.style.cssText =
             "padding:calc(env(safe-area-inset-top) + 24px) 20px 24px;color:#f5f5f5;font-family:system-ui,sans-serif";
@@ -62,7 +64,13 @@
     <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap" /></noscript>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Contenu de secours, visible AVANT que React démarre (React le remplace). Jamais d'écran noir muet. -->
+      <div id="boot" style="padding:calc(env(safe-area-inset-top) + 32px) 20px;color:#f5f5f5;font-family:system-ui,sans-serif">
+        <div style="font-size:22px;font-weight:800">Magi-<span style="color:#f97316">Stream</span></div>
+        <p style="opacity:.7;font-size:14px;margin:8px 0 0">Chargement de tes téléchargements…</p>
+      </div>
+    </div>
     <script type="module" src="./main.tsx"></script>
   </body>
 </html>

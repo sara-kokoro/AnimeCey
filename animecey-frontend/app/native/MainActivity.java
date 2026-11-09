@@ -52,6 +52,36 @@ public class MainActivity extends BridgeActivity {
      * Si le site ne répond pas du tout (Wi-Fi sans internet, réseau bloqué), le chargement peut durer très
      * longtemps sur un écran noir : on bascule alors sur la page hors connexion.
      */
+
+    /**
+     * DIAGNOSTIC TEMPORAIRE (à retirer quand la page hors connexion marche) : 8 s après le démarrage, si la page
+     * affichée n'est pas le site, une bulle indique l'adresse, si React a démarré (b=1) et combien d'éléments
+     * contient #root (r) : ça dit exactement où ça bloque, sans ordinateur.
+     */
+    private void diagToast(final WebView wv) {
+        new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    wv.evaluateJavascript(
+                            "(function(){var r=document.getElementById('root');return JSON.stringify({u:location.href,"
+                                    + "b:document.documentElement.getAttribute('data-booted')||0,"
+                                    + "r:r?r.childNodes.length:-1,t:(document.body?document.body.innerText.length:-1)})})()",
+                            new ValueCallback<String>() {
+                                @Override
+                                public void onReceiveValue(String v) {
+                                    if (v != null && !v.contains("magi-stream.online")) {
+                                        Toast.makeText(MainActivity.this, "DIAG " + v, Toast.LENGTH_LONG).show();
+                                    }
+                                }
+                            });
+                } catch (Exception ignored) {
+                    // diagnostic impossible
+                }
+            }
+        }, 8000);
+    }
+
     private void watchSiteLoad(final WebView wv) {
         new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
             @Override
@@ -273,6 +303,7 @@ public class MainActivity extends BridgeActivity {
             WebView wv = getBridge().getWebView();
             if (!hasInternet()) wv.loadUrl(OFFLINE_URL);
             else watchSiteLoad(wv);
+            diagToast(wv);
         } catch (Exception ignored) {
             // pont indisponible : Capacitor garde son comportement par défaut
         }
