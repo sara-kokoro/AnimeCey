@@ -39,15 +39,15 @@ xml = xml.replace("<application", add + "    <application", 1) if add else xml
 if "DownloadService" not in xml:
     service = '        <service android:name=".DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />\n    '
     xml = xml.replace("</application>", service + "</application>", 1)
-# Liens d'application : https://www.magi-stream.online/... s'ouvre dans l'app quand elle est installée
-# (vérifié par le fichier /.well-known/assetlinks.json du site)
-if 'android:host="www.magi-stream.online"' not in xml:
+# Liens d'application : seuls les liens de PARTAGE https://go.magi-stream.online/... s'ouvrent dans l'app
+# (vérifié par /.well-known/assetlinks.json de ce sous-domaine). www.magi-stream.online reste dans le navigateur.
+if 'android:host="go.magi-stream.online"' not in xml:
     link = (
         '        <intent-filter android:autoVerify="true">\n'
         '            <action android:name="android.intent.action.VIEW" />\n'
         '            <category android:name="android.intent.category.DEFAULT" />\n'
         '            <category android:name="android.intent.category.BROWSABLE" />\n'
-        '            <data android:scheme="https" android:host="www.magi-stream.online" />\n'
+        '            <data android:scheme="https" android:host="go.magi-stream.online" />\n'
         '        </intent-filter>\n'
         '    '
     )

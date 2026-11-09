@@ -4,12 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0a0a0a" />
+    <meta name="magi-offline" content="v3" />
     <title>Magi-Stream — Hors connexion</title>
     <!-- (placé AVANT toute feuille de style externe, sinon il serait bloqué lui aussi)
          Filet de sécurité : si la page ne démarre pas, on affiche la cause au lieu d'un écran noir. -->
     <script>
       (function () {
-        var errs = [];
+        var errs = (window.__magiErrs = []); // lu aussi par la bulle de diagnostic de l'app
         function add(m) {
           errs.push(String(m));
         }

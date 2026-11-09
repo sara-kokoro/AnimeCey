@@ -36,6 +36,10 @@ jobs:
           cd "$APP_DIR/.."
           npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts
           npm run build:offline
+          if ! grep -q 'magi-offline' "$APP_DIR/www/offline.html"; then
+            echo "::error::La page hors connexion embarquée n'est pas la dernière version : offline/offline.html du dépôt est ancien."
+            exit 1
+          fi
 
       - name: Installer ImageMagick (icône) et accepter les licences Android
         run: |

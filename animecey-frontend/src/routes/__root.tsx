@@ -110,6 +110,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
     ],
     scripts: [
+      {
+        // Les liens de partage go.magi-stream.online ouvrent l'app si elle est installée ; sinon on arrive ici
+        // et on est renvoyé vers le vrai site. /.well-known/ reste servi tel quel (vérification Android).
+        children:
+          "if(location.hostname==='go.magi-stream.online'&&location.pathname.indexOf('/.well-known/')!==0){location.replace('https://www.magi-stream.online'+location.pathname+location.search+location.hash)}",
+      },
       { src: "https://www.googletagmanager.com/gtag/js?id=G-4P94D5B3PM", async: true },
       {
         children:

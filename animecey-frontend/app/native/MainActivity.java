@@ -54,6 +54,44 @@ public class MainActivity extends BridgeActivity {
      */
 
     /**
+     * DIAGNOSTIC TEMPORAIRE (à retirer quand la page hors connexion marche) : à 8 s puis 20 s, si la page affichée
+     * n'est pas le site, une bulle indique : adresse (u), présence du repère de version v3 de offline.html (v3),
+     * React démarré (b), éléments dans #root (r), longueur du texte (t), version de Chrome du WebView, 1re erreur.
+     */
+    private void diagToast(final WebView wv) {
+        final String js = "(function(){var r=document.getElementById('root'),m=document.querySelector('meta[name=magi-offline]'),"
+                + "c=navigator.userAgent.match(/Chrome\\/(\\d+)/);"
+                + "return 'u='+location.pathname+' v3='+(m?1:0)+' b='+(document.documentElement.getAttribute('data-booted')||0)"
+                + "+' r='+(r?r.childNodes.length:-1)+' t='+(document.body?document.body.innerText.length:-1)"
+                + "+' chrome='+(c?c[1]:'?')+' err='+((window.__magiErrs||[]).slice(0,2).join(' | ')||'-')+' h='+location.hostname})()";
+        long[] delais = {8000, 20000};
+        for (long d : delais) {
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        wv.evaluateJavascript(js, new ValueCallback<String>() {
+                            @Override
+                            public void onReceiveValue(String v) {
+                                if (v != null && !v.contains("magi-stream.online")) {
+                                    Toast.makeText(MainActivity.this, "DIAG " + v.replace("\"", ""), Toast.LENGTH_LONG).show();
+                                }
+                            }
+                        });
+                    } catch (Exception ignored) {
+                        // diagnostic impossible
+                    }
+                }
+            }, d);
+        }
+    }
+
+    /**
+     * Si le site ne répond pas du tout (Wi-Fi sans internet, réseau bloqué), le chargement peut durer très
+     * longtemps sur un écran noir : on bascule alors sur la page hors connexion.
+     */
+
+    /**
      * DIAGNOSTIC TEMPORAIRE (à retirer quand la page hors connexion marche) : 8 s après le démarrage, si la page
      * affichée n'est pas le site, une bulle indique l'adresse, si React a démarré (b=1) et combien d'éléments
      * contient #root (r) : ça dit exactement où ça bloque, sans ordinateur.
@@ -106,10 +144,11 @@ public class MainActivity extends BridgeActivity {
 
     private void readPath(Intent i) {
         if (i == null) return;
-        // lien https://www.magi-stream.online/... ouvert depuis Telegram, WhatsApp, un navigateur…
+        // lien de partage https://go.magi-stream.online/... ouvert depuis Telegram, WhatsApp, X…
         android.net.Uri data = i.getData();
         if (Intent.ACTION_VIEW.equals(i.getAction()) && data != null
-                && "https".equals(data.getScheme()) && "www.magi-stream.online".equals(data.getHost())) {
+                && "https".equals(data.getScheme())
+                && ("go.magi-stream.online".equals(data.getHost()) || "www.magi-stream.online".equals(data.getHost()))) {
             String path = data.getEncodedPath() == null || data.getEncodedPath().isEmpty() ? "/" : data.getEncodedPath();
             if (data.getEncodedQuery() != null) path += "?" + data.getEncodedQuery();
             pendingPath = path;
