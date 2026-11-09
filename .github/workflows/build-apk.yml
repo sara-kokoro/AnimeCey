@@ -31,12 +31,33 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Construire la page hors connexion (React, embarquée dans l'APK)
+        run: |
+          cd "$APP_DIR/.."
+          npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts
+          npm run build:offline
+          echo "Dossier courant : $(pwd)"
+          ls -la app/www || true
+          if ! grep -q 'magi-offline' app/www/offline.html; then
+            echo "::error::La page hors connexion embarquée n'est pas la dernière version : offline/offline.html du dépôt est ancien."
+            exit 1
+          fi
+
       - name: Installer ImageMagick (icône) et accepter les licences Android
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq imagemagick
           command -v convert || sudo ln -s "$(command -v magick)" /usr/local/bin/convert
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Clé Firebase (google-services.json, optionnelle)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > "$APP_DIR/google-services.json"
+          fi
+          if [ -f "$APP_DIR/google-services.json" ]; then echo "Firebase activé"; else echo "::warning::google-services.json absent : notifications Firebase désactivées"; fi
 
       - name: Installer Capacitor et créer le projet Android
         run: |
@@ -56,8 +77,20 @@ jobs:
           cd "$APP_DIR/android"
           ./gradlew assembleDebug --no-daemon
 
+      - name: Empreinte de la signature (doit rester identique à chaque construction)
+        run: |
+          keytool -printcert -jarfile "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" | grep -E "Owner|SHA256"
+
       - name: Renommer l'APK
         run: cp "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" magi-stream.apk
+
+      - name: Page hors connexion réellement présente dans l'APK (diagnostic)
+        run: |
+          echo "--- début de assets/public/offline.html dans l'APK ---"
+          unzip -p magi-stream.apk assets/public/offline.html | head -c 1500 || true
+          echo
+          echo "--- fichiers assets/public/ ---"
+          unzip -l magi-stream.apk | grep "assets/public/" | head -20 || true
 
       - uses: actions/upload-artifact@v4
         with:
