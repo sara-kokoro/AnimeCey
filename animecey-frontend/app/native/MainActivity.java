@@ -110,17 +110,6 @@ public class MainActivity extends BridgeActivity {
 
     private void readPath(Intent i) {
         if (i == null) return;
-        // lien de partage https://go.magi-stream.online/... ouvert depuis Telegram, WhatsApp, X…
-        android.net.Uri data = i.getData();
-        if (Intent.ACTION_VIEW.equals(i.getAction()) && data != null
-                && "https".equals(data.getScheme())
-                && ("go.magi-stream.online".equals(data.getHost()) || "www.magi-stream.online".equals(data.getHost()))) {
-            String path = data.getEncodedPath() == null || data.getEncodedPath().isEmpty() ? "/" : data.getEncodedPath();
-            if (data.getEncodedQuery() != null) path += "?" + data.getEncodedQuery();
-            pendingPath = path;
-            i.setData(null);
-            return;
-        }
         String p = i.getStringExtra("magi_path");
         if (p != null && p.startsWith("/")) {
             pendingPath = p;
