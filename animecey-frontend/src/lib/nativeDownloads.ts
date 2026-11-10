@@ -56,5 +56,10 @@ export function nativePlugin(): NativePlugin {
 
 /** Adresse lisible par la page pour un fichier du téléphone. */
 export function nativeFileUrl(path: string): string {
-  return cap().convertFileSrc(path) as string;
+  const c = cap();
+  if (typeof c?.convertFileSrc === "function") return c.convertFileSrc(path) as string;
+  // Page hors connexion affichée par Capacitor (errorPath) : le pont Capacitor n'y est pas injecté (window.Capacitor
+  // n'existe pas). On fabrique la même adresse que convertFileSrc sur Android : https://localhost/_capacitor_file_/chemin
+  const chemin = path.replace(/^file:\/\//, "");
+  return `${location.origin}/_capacitor_file_${chemin.startsWith("/") ? "" : "/"}${chemin}`;
 }
