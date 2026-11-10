@@ -156,6 +156,18 @@ public class MainActivity extends BridgeActivity {
             return DownloadStore.doneJson(ctx);
         }
 
+        /** Supprime un épisode téléchargé (fichier + fiche), pour la page hors connexion. */
+        @JavascriptInterface
+        public void remove(int episodeId) {
+            try {
+                DownloadService.cancel(ctx, episodeId);
+                DownloadService.deleteFiles(ctx, episodeId);
+                DownloadStore.remove(ctx, episodeId);
+            } catch (Exception ignored) {
+                // suppression impossible : la page affichera l'erreur au rechargement de la liste
+            }
+        }
+
         /** Plein écran : paysage + barres système masquées, ou retour au mode normal. */
         @JavascriptInterface
         public void setFullscreen(final boolean on) {
