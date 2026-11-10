@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build:offline": "vite build -c vite.offline.config.ts"
+    "build:offline": "vite build -c vite.offline.config.ts && node scripts/inline-offline.mjs"
   },
   "overrides": {
     "rolldown": "1.2.1"
