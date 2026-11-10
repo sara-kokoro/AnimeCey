@@ -107,7 +107,9 @@ export function OfflineApp() {
   const removeMany = async (ids: number[]) => {
     try {
       for (const id of ids) {
-        await nativePlugin().remove({ episodeId: id });
+        // Sur cette page, le pont Capacitor n'existe pas : on passe par MagiNative (module natif) d'abord
+        if (typeof nat()?.remove === "function") nat().remove(id);
+        else await nativePlugin().remove({ episodeId: id });
         if (playing?.episodeId === id) setPlaying(null);
       }
       toast.success(ids.length > 1 ? `${ids.length} épisodes supprimés` : "Épisode supprimé");
