@@ -39,19 +39,9 @@ xml = xml.replace("<application", add + "    <application", 1) if add else xml
 if "DownloadService" not in xml:
     service = '        <service android:name=".DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />\n    '
     xml = xml.replace("</application>", service + "</application>", 1)
-# Liens d'application : seuls les liens de PARTAGE https://go.magi-stream.online/... s'ouvrent dans l'app
-# (vérifié par /.well-known/assetlinks.json de ce sous-domaine). www.magi-stream.online reste dans le navigateur.
-if 'android:host="go.magi-stream.online"' not in xml:
-    link = (
-        '        <intent-filter android:autoVerify="true">\n'
-        '            <action android:name="android.intent.action.VIEW" />\n'
-        '            <category android:name="android.intent.category.DEFAULT" />\n'
-        '            <category android:name="android.intent.category.BROWSABLE" />\n'
-        '            <data android:scheme="https" android:host="go.magi-stream.online" />\n'
-        '        </intent-filter>\n'
-        '    '
-    )
-    xml = xml.replace("</activity>", link + "</activity>", 1)
+# Aucun lien magi-stream.online n'est capté par l'app : ils s'ouvrent dans le navigateur ou l'app choisie par l'utilisateur.
+# (retire un éventuel filtre déjà présent dans un manifeste existant)
+xml = re.sub(r'\s*<intent-filter android:autoVerify="true">(?:(?!</intent-filter>).)*?go\.magi-stream\.online(?:(?!</intent-filter>).)*?</intent-filter>', "", xml, flags=re.S)
 # Notifications Firebase (FCM)
 if "MagiFirebaseService" not in xml:
     fcm = (
