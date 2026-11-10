@@ -78,6 +78,10 @@ async def init_db() -> None:
             "WHEN api_season LIKE 'special%' THEN 'special' "
             "ELSE 'autre' END WHERE kind IS NULL"
         ))
+        # Notifications de l'app : le clic peut mener à un lien externe (plus long que 200 caractères)
+        await conn.execute(text(
+            "ALTER TABLE app_notifications ALTER COLUMN path TYPE VARCHAR(1000)"
+        ))
 
 
 async def get_db():

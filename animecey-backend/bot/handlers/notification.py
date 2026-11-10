@@ -1,7 +1,7 @@
 """/notification : envoie une notification à tous les utilisateurs de l'application.
 
   /notification   le bot demande, une étape à la fois : image (facultative), titre, texte, page ouverte au clic
-                  (accueil, téléchargements, catalogue, calendrier, don, ou la fiche d'un animé par son numéro).
+                  (accueil, téléchargements, catalogue, calendrier, don, la fiche d'un animé par son numéro, ou un lien externe).
 
 L'application récupère les nouvelles notifications toutes les ~15 minutes, même fermée.
 """
@@ -9,6 +9,7 @@ L'application récupère les nouvelles notifications toutes les ~15 minutes, mê
 from __future__ import annotations
 
 import logging
+import os
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -20,11 +21,22 @@ from bot.handlers.admin import is_admin
 from database import async_session
 from models import Anime
 from models_ads import APP_PAGES, AppNotification, Device
+from services import fcm
 
 logger = logging.getLogger(__name__)
 
 _PATHS = {"home": "/", "downloads": "/telechargements", "catalogue": "/catalogue", "calendar": "/calendrier", "donate": "/don"}
 _flows: dict[int, dict] = {}
+
+
+def _norm_url(text: str) -> str | None:
+    """Lien externe : https://…, t.me/…, x.com/…, ou tout autre site (https:// ajouté si absent)."""
+    text = text.strip()
+    if re.match(r"^https?://\S+$", text, re.I):
+        return text[:1000]
+    if re.match(r"^(t\.me|www\.)\S+$", text, re.I) or re.match(r"^[\w.-]+\.[a-z]{2,}(/\S*)?$", text, re.I):
+        return ("https://" + text)[:1000]
+    return None
 
 
 def _in_flow_filter(_, __, m: Message) -> bool:
@@ -37,6 +49,7 @@ in_flow = filters.create(_in_flow_filter)
 def _pages_markup() -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(label, callback_data=f"notif:page:{key}")] for key, label in APP_PAGES.items()]
     rows.append([InlineKeyboardButton("🎬 La fiche d'un animé / film / série", callback_data="notif:page:anime")])
+    rows.append([InlineKeyboardButton("🔗 Un lien externe (Telegram, X, site…)", callback_data="notif:page:ext")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -52,11 +65,18 @@ async def _finish(message: Message, flow: dict) -> None:
         devices = (
             await db.execute(select(func.count()).select_from(Device).where(Device.platform == "app", Device.last_seen >= since))
         ).scalar() or 0
-    await message.reply(
-        f"✅ Notification #{n.id} envoyée.\n"
-        f"Les appareils de l'app l'affichent sous ~15 minutes (environ {devices} appareils actifs ces 30 derniers jours).\n"
-        f"Au clic : {flow['path']}"
-    )
+    image_url = None
+    if flow.get("image"):
+        base = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
+        image_url = f"{base}/api/app-notifications/{n.id}/image" if base else None
+    sent, total = await fcm.send_app_notification(n.id, n.title, n.body, n.path, image_url)
+    if sent:
+        delivery = f"⚡ Envoyée par Firebase à {sent}/{total} téléphones (reçue en quelques secondes). Les autres l'auront sous ~15 minutes."
+    elif fcm.is_enabled():
+        delivery = f"Firebase : aucun téléphone enregistré pour l'instant. Les appareils l'affichent sous ~15 minutes (environ {devices} appareils actifs ces 30 derniers jours)."
+    else:
+        delivery = f"Les appareils de l'app l'affichent sous ~15 minutes (environ {devices} appareils actifs ces 30 derniers jours)."
+    await message.reply(f"✅ Notification #{n.id} envoyée.\n{delivery}\nAu clic : {flow['path']}")
 
 
 def register(bot: Client):
@@ -127,6 +147,14 @@ def register(bot: Client):
             flow["path"] = f"/anime/{anime.id}"
             _flows.pop(uid, None)
             await _finish(message, flow)
+        elif step == "ext_url":
+            url = _norm_url(text)
+            if not url:
+                await message.reply("Ce lien ne ressemble pas à une adresse. Exemple : https://t.me/MagiStream ou https://x.com/…")
+                return message.stop_propagation()
+            flow["path"] = url
+            _flows.pop(uid, None)
+            await _finish(message, flow)
         elif step == "page":
             await message.reply("Choisis une page avec les boutons ci-dessus.")
         message.stop_propagation()
@@ -143,6 +171,10 @@ def register(bot: Client):
         if key == "anime":
             flow["step"] = "anime_id"
             await cq.message.reply("Envoie le numéro de l'animé / film / série (le même que pour /anime).")
+            return await cq.answer()
+        if key == "ext":
+            flow["step"] = "ext_url"
+            await cq.message.reply("Envoie le lien : https://t.me/MagiStream, t.me/…, https://x.com/…, ou tout autre site.")
             return await cq.answer()
         if key in _PATHS:
             flow["path"] = _PATHS[key]

@@ -50,6 +50,7 @@ async def list_new(request: Request, after: Optional[int] = Query(None, ge=0), d
                 "title": r.title,
                 "body": r.body,
                 "path": r.path,
+                "external": r.path.lower().startswith(("http://", "https://")),
                 "image_url": f"{base}/api/app-notifications/{r.id}/image" if r.image_mime else None,
                 "created_at": r.created_at.isoformat(),
             }

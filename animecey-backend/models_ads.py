@@ -94,5 +94,16 @@ class AppNotification(Base):
     body: Mapped[str] = mapped_column(Text, nullable=False)
     image: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     image_mime: Mapped[str | None] = mapped_column(String(60), nullable=True)
-    path: Mapped[str] = mapped_column(String(200), nullable=False, default="/")  # page ouverte au clic : « /anime/12 »
+    path: Mapped[str] = mapped_column(String(1000), nullable=False, default="/")  # ouverte au clic : « /anime/12 » ou un lien externe « https://… »
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+
+
+class FcmToken(Base):
+    """Jeton Firebase (FCM) d'un téléphone où l'application est installée : sert à envoyer les notifications en quelques secondes."""
+
+    __tablename__ = "fcm_tokens"
+
+    token: Mapped[str] = mapped_column(String(512), primary_key=True)
+    platform: Mapped[str] = mapped_column(String(16), nullable=False, default="android")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
