@@ -113,7 +113,7 @@ public class MagiNotifyWorker extends Worker {
         int id = it.optInt("id");
         String target = it.optString("path", "/");
         Intent open;
-        if (target.startsWith("https://")) {
+        if (target.startsWith("https://") || target.startsWith("http://")) {
             // lien externe (Telegram, X, site…) : ouvert dans l'application ou le navigateur adapté
             open = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(target));
             open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
