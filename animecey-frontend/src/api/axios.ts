@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "yumeflowerbot.apps.mistral.run/api";
+const API_BASE = import.meta.env.VITE_API_URL ?? "https://yumeflowerbot.apps.mistral.run/api";
 
 /** Serveur de secours : utilisé automatiquement si le principal ne répond pas (panne, plus de crédit…). */
 const FALLBACK_BASE: string = (import.meta.env.VITE_API_FALLBACK_URL as string | undefined) ?? "https://yumeflowerbot.koyeb.app/api";
