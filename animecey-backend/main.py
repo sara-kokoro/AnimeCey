@@ -90,9 +90,14 @@ async def _ensure_admin():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initialising database...")
-    await init_db()
     try:
-        await _ensure_admin()
+        # Plafond global : un blocage réseau ou de verrou ne doit jamais empêcher le serveur d'ouvrir son port
+        await asyncio.wait_for(init_db(), timeout=60)
+        logger.info("Database ready.")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Initialisation de la base impossible ou trop longue (%s : %r) : le serveur démarre quand même.", type(exc).__name__, exc)
+    try:
+        await asyncio.wait_for(_ensure_admin(), timeout=20)
     except Exception:  # noqa: BLE001 — jamais bloquer le démarrage pour le compte admin
         logger.exception("Vérification du compte admin impossible, l'application démarre quand même.")
 
