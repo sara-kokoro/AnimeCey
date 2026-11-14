@@ -6,9 +6,9 @@ La table est créée toute seule au démarrage par create_all() (rien à migrer)
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from database import Base
@@ -76,4 +76,41 @@ class CalendarEntry(Base):
     unpinned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class TmdbRelease(Base):
+    """Sortie annoncée par TMDB (film, nouvelle série, épisode d'une série suivie), lue tous les 3 jours.
+
+    Une ligne = une sortie à une date précise (jour, sans heure : TMDB ne donne pas l'heure).
+    L'alerte aux admins part le jour J (voir services/tmdb_releases.py). Table créée par create_all().
+    """
+
+    __tablename__ = "tmdb_releases"
+    __table_args__ = (
+        UniqueConstraint("tmdb_id", "media", "kind", "season_number", "episode_number", name="uq_tmdb_release"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tmdb_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    media: Mapped[str] = mapped_column(String(5), nullable=False)  # "movie" | "tv"
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)  # "movie" | "premiere" | "episode"
+    season_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    episode_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    original_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    episode_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    overview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    poster_path: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    popularity: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    is_anime: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # animation japonaise : /ajouter
+    release_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    # n° du titre chez nous s'il est déjà au catalogue (même fiche TMDB)
+    anime_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("animes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )

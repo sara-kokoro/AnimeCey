@@ -65,6 +65,12 @@ async def init_db() -> None:
         await conn.execute(text(
             "ALTER TABLE animes ADD COLUMN IF NOT EXISTS downloadable BOOLEAN NOT NULL DEFAULT FALSE"
         ))
+        # Logo, affiches supplémentaires et suivi du rattrapage des images TMDB
+        await conn.execute(text("ALTER TABLE animes ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500)"))
+        await conn.execute(text("ALTER TABLE animes ADD COLUMN IF NOT EXISTS posters JSON"))
+        await conn.execute(text(
+            "ALTER TABLE animes ADD COLUMN IF NOT EXISTS images_synced BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
         # Type d'emplacement (saison, saga, film, oav...) pour les filtres et les icônes
         await conn.execute(text(
             "ALTER TABLE anime_seasons ADD COLUMN IF NOT EXISTS kind VARCHAR(16)"

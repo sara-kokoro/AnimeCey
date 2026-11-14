@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from auth import get_current_user
 from database import get_db
 from models import Anime, Episode, Favorite, User, WatchHistory, Watchlist
+from services import images
 from schemas import (
     EpisodePublic,
     AnimePublic,
@@ -159,7 +160,7 @@ async def get_history(
             continue
         out.append({
             "id": h.id,
-            "episode": EpisodePublic.model_validate(ep).model_dump(),
+            "episode": {**EpisodePublic.model_validate(ep).model_dump(), "thumbnail_url": images.episode_thumb(anime)},
             "anime": AnimePublic.model_validate(anime).model_dump(),
             "progress_seconds": h.progress_seconds,
             "watched_at": h.watched_at.isoformat(),
@@ -221,7 +222,7 @@ async def continue_watching(
             continue
         out.append({
             "id": h.id,
-            "episode": EpisodePublic.model_validate(ep).model_dump(),
+            "episode": {**EpisodePublic.model_validate(ep).model_dump(), "thumbnail_url": images.episode_thumb(anime)},
             "anime": AnimePublic.model_validate(anime).model_dump(),
             "progress_seconds": h.progress_seconds,
             "watched_at": h.watched_at.isoformat(),

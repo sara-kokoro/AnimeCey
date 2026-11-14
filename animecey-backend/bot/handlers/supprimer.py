@@ -41,6 +41,18 @@ async def _summary(anime_id: int) -> tuple[Anime | None, int, int, int]:
     return anime, eps, seasons, len(msgs)
 
 
+async def unshared_messages(ids: list[int]) -> tuple[list[int], int]:
+    """(messages à effacer, nombre gardés). Un fichier du canal encore utilisé par un AUTRE épisode n'est jamais
+    effacé : un film rangé dans sa série ET sur sa propre fiche partage le même message."""
+    if not ids:
+        return [], 0
+    async with async_session() as db:
+        used = set(
+            (await db.execute(select(Episode.servcey1_msg_id).where(Episode.servcey1_msg_id.in_(ids)))).scalars()
+        ) | set((await db.execute(select(Episode.thumb_msg_id).where(Episode.thumb_msg_id.in_(ids)))).scalars())
+    return [m for m in ids if m not in used], len([m for m in ids if m in used])
+
+
 async def _delete_channel_messages(client: Client, ids: list[int]) -> int:
     """Efface les messages du canal par paquets de 100 ; renvoie le nombre supprimé."""
     done = 0
@@ -78,6 +90,11 @@ async def _delete_anime(client: Client, anime_id: int, with_channel: bool) -> st
             quick_upload._current_opts.pop(uid, None)
 
     text = f"🗑 « {title} » supprimé du site."
+    kept = 0
+    if with_channel and msg_ids:
+        msg_ids, kept = await unshared_messages(msg_ids)
+    if kept:
+        text += f"\n{kept} fichier(s) gardé(s) dans le canal : encore utilisés par une autre fiche."
     if with_channel and msg_ids:
         done = await _delete_channel_messages(client, msg_ids)
         text += f"\nCanal : {done}/{len(msg_ids)} message(s) effacé(s)."

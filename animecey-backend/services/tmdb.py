@@ -63,8 +63,41 @@ async def search(query: str, db: AsyncSession, language: str = "fr-FR") -> list[
     return results
 
 
+IMG_LANGS = "fr,en,ja,null"  # langues demandées pour les logos / backdrops
+_LOGO_LANG_ORDER = ("fr", "en", "ja")
+
+
+def pick_logo_item(images: dict | None) -> dict | None:
+    """Chemin TMDB du meilleur logo : français, sinon anglais, sinon japonais, sinon n'importe lequel.
+
+    À langue égale : meilleure note, puis plus de votes, puis plus grand. Les PNG passent avant les SVG
+    (les SVG ne sont pas redimensionnés par le CDN de TMDB).
+    """
+    logos = [l for l in (images or {}).get("logos") or [] if l.get("file_path")]
+    if not logos:
+        return None
+
+    def rank(l: dict):
+        lang = l.get("iso_639_1")
+        lang_rank = _LOGO_LANG_ORDER.index(lang) if lang in _LOGO_LANG_ORDER else len(_LOGO_LANG_ORDER)
+        is_svg = str(l["file_path"]).lower().endswith(".svg")
+        return (is_svg, lang_rank, -(l.get("vote_average") or 0), -(l.get("vote_count") or 0), -(l.get("width") or 0))
+
+    return min(logos, key=rank)
+
+
+def pick_backdrop(images: dict | None) -> str | None:
+    """Meilleur backdrop SANS texte (langue nulle) : les affiches avec titre incrusté font de mauvaises vignettes."""
+    backs = [b for b in (images or {}).get("backdrops") or [] if b.get("file_path")]
+    clean = [b for b in backs if not b.get("iso_639_1")] or backs
+    if not clean:
+        return None
+    return max(clean, key=lambda b: ((b.get("vote_average") or 0), (b.get("vote_count") or 0), (b.get("width") or 0)))["file_path"]
+
+
 async def get_details(tmdb_id: int, media_type: str, db: AsyncSession, language: str = "fr-FR") -> dict:
-    cache_key = f"tmdb:details:{media_type}:{tmdb_id}:{language}"
+    # v2 : les détails contiennent désormais logo_path / best_backdrop_path (images demandées dans le même appel)
+    cache_key = f"tmdb:details:v2:{media_type}:{tmdb_id}:{language}"
     cached = await _get_cache(db, cache_key, CACHE_DETAILS_TTL)
     if cached is not None:
         return cached
@@ -74,10 +107,20 @@ async def get_details(tmdb_id: int, media_type: str, db: AsyncSession, language:
     async with httpx.AsyncClient(timeout=15) as client:
         resp = await client.get(
             f"{base}/{media_type}/{tmdb_id}",
-            params={"api_key": api_key, "language": language},
+            params={
+                "api_key": api_key,
+                "language": language,
+                "append_to_response": "images",  # logos + backdrops dans le MÊME appel : aucun appel de plus
+                "include_image_language": IMG_LANGS,
+            },
         )
         resp.raise_for_status()
         details = resp.json()
+        images = details.pop("images", None)
+        logo = pick_logo_item(images)
+        details["logo_path"] = logo["file_path"] if logo else None
+        details["logo_lang"] = (logo or {}).get("iso_639_1") or "sans texte"
+        details["best_backdrop_path"] = pick_backdrop(images)
 
         videos_resp = await client.get(
             f"{base}/{media_type}/{tmdb_id}/videos",
@@ -94,6 +137,12 @@ async def get_details(tmdb_id: int, media_type: str, db: AsyncSession, language:
 
     await _set_cache(db, cache_key, details)
     return details
+
+
+async def get_poster_path(tmdb_id: int, media_type: str, db: AsyncSession) -> str | None:
+    """Affiche TMDB (celle de la fiche française)."""
+    details = await get_details(tmdb_id, media_type, db)
+    return (details or {}).get("poster_path")
 
 
 async def get_season(tmdb_id: int, season_number: int, db: AsyncSession, language: str = "fr-FR") -> dict:

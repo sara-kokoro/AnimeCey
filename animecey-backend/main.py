@@ -150,12 +150,17 @@ async def lifespan(app: FastAPI):
     from services import calendar_sync
     calendar_sync.start_loop()
 
+    # Sorties TMDB (films et séries) : relevé tous les 3 jours + alerte aux admins le jour J
+    from services import tmdb_releases
+    tmdb_releases.start_loop()
+
     # Autres noms des animés (recherche floue) : rattrapage en arrière-plan
     from services import aliases as _aliases
     _aliases.start_backfill()
 
     yield
 
+    await tmdb_releases.stop_loop()
     await calendar_sync.stop_loop()
     await catalog_sync.stop_loop()
     await tmcooper_sync.stop_loop()

@@ -14,7 +14,7 @@ from database import get_db
 from services import search_fuzzy
 from models import Anime, Episode, LanguageEnum, WatchHistory
 from schemas import AnimePublic
-from services import anilist
+from services import anilist, images
 from services.caption_parser import norm
 
 logger = logging.getLogger(__name__)
@@ -150,7 +150,9 @@ async def list_animes(
         ordered = [rows[i] for i in ranked if i in rows]
         total = len(ordered)
         pages = max(1, math.ceil(total / limit))
-        items = await _enrich_animes(db, ordered[(page - 1) * limit : page * limit])
+        shown = ordered[(page - 1) * limit : page * limit]
+        images.schedule(shown)  # anciens titres : logo + backdrop TMDB lus à leur première apparition en recherche
+        items = await _enrich_animes(db, shown)
         return {"items": items, "total": total, "page": page, "pages": pages}
 
     if sort == "za":
@@ -476,8 +478,54 @@ async def get_anime(anime_id: int, db: AsyncSession = Depends(get_db)):
     if not anime:
         from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Animé introuvable")
+    # Ancien titre : logo + backdrop TMDB lus UNE fois, à la première ouverture de la fiche
+    if await images.ensure_now(anime):
+        await db.refresh(anime)
     items = await _enrich_animes(db, [anime])
     return items[0]
+
+
+_media_cache: dict[int, tuple[bytes, str]] = {}
+
+
+@router.get("/media/{ref}")
+async def stored_image(ref: str):
+    """Image envoyée au bot (/poster, /setlogo...) quand R2 n'est pas configuré : lue dans le canal Telegram.
+
+    Seuls les messages dont la légende commence par « image » sont servis : les épisodes du canal restent privés.
+    """
+    from fastapi import HTTPException
+    from fastapi.responses import Response
+
+    from config import settings
+    from services import botpool
+
+    stem = ref.split(".")[0]
+    if not stem.isdigit():
+        raise HTTPException(status_code=404, detail="Image introuvable")
+    msg_id = int(stem)
+    hit = _media_cache.get(msg_id)
+    if hit is None:
+        client = botpool.pool.any_client()
+        if client is None:
+            raise HTTPException(status_code=503, detail="Aucun bot Telegram disponible")
+        try:
+            msg = await client.get_messages(settings.TELEGRAM_CHANNEL_ID, msg_id)
+            caption = (getattr(msg, "caption", None) or "") if msg else ""
+            if not msg or not msg.document or not caption.startswith(images.MEDIA_CAPTION):
+                raise HTTPException(status_code=404, detail="Image introuvable")
+            buf = await client.download_media(msg, in_memory=True)
+            data = buf.getvalue()
+            mime, _ = images.sniff(data)
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("image du canal %s illisible : %s", msg_id, exc)
+            raise HTTPException(status_code=503, detail="Image indisponible")
+        if len(_media_cache) >= 200:
+            _media_cache.pop(next(iter(_media_cache)))
+        hit = _media_cache[msg_id] = (data, mime)
+    return Response(content=hit[0], media_type=hit[1], headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 @router.get("/{anime_id}/credits")

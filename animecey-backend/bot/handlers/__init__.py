@@ -6,6 +6,7 @@ from bot.handlers.callbacks import register as register_callbacks
 from bot.handlers.quick_upload import register as register_quick_upload
 from bot.handlers.fiche import register as register_fiche
 from bot.handlers.vignettes import register as register_vignettes
+from bot.handlers.affiches import register as register_images
 from bot.handlers.bilan import register as register_bilan
 from bot.handlers.ajouter import register as register_ajouter
 from bot.handlers.supprimer import register as register_supprimer
@@ -19,12 +20,15 @@ from bot.handlers.calendrier import register as register_calendrier
 from bot.handlers.pubs import register as register_pubs
 from bot.handlers.notification import register as register_notification
 from bot.handlers.stats import register as register_stats
+from bot.handlers.sorties import register as register_sorties
+from bot.handlers.films import register as register_films
 
 
 def register_all(bot):
     register_quick_upload(bot)  # en premier : /anime et les envois par légende
     register_fiche(bot)         # /fiche : choisir la fiche TMDB d'un animé
-    register_vignettes(bot)     # /vignettes : vignettes des épisodes depuis TMDB
+    register_vignettes(bot)     # /vignettes : titres des épisodes depuis TMDB (saisons et sagas)
+    register_images(bot)        # /poster /setposter /setlogo /setbackdrop /logos : affiches, logos, backdrops
     register_bilan(bot)         # /bilan : ce qui est en ligne pour un animé
     register_ajouter(bot)       # /ajouter : ajouter un animé absent du catalogue
     register_supprimer(bot)     # /supprimer : supprimer un animé (avec confirmation)
@@ -38,6 +42,8 @@ def register_all(bot):
     register_pubs(bot)          # /pub, /pubs : pubs vendues à la main
     register_notification(bot)  # /notification : notification à tous les utilisateurs de l'app
     register_stats(bot)         # /stats : chiffres du site et de l'app
+    register_sorties(bot)       # /sorties : alertes TMDB de sorties (films et séries)
+    register_films(bot)         # /lierfilm : un film aussi sur sa propre fiche
     register_admin(bot)
     register_upload(bot)
     register_callbacks(bot)

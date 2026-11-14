@@ -68,6 +68,19 @@ def season_slots(details: dict, media: str) -> list[tuple[str, str]]:
     return [(f"saison{n}", f"Saison {n}") for n in (numbers or [1])]
 
 
+async def _unique_title(db, title: str, year: str, ref: int) -> str:
+    """Titre libre : tel quel, sinon « Titre (année) », sinon « Titre (année · réf) »."""
+    async def taken(t: str) -> bool:
+        return bool((await db.execute(select(Anime.id).where(func.lower(Anime.title) == t.lower()))).first())
+
+    if not await taken(title):
+        return title
+    cand = f"{title} ({year})" if year.isdigit() else f"{title} ({ref})"
+    if not await taken(cand):
+        return cand
+    return f"{title} ({year or '?'} · {ref})"
+
+
 async def _create(media: str, tmdb_id: int, category: str = "anime") -> str:
     """Crée la fiche (category « anime » ou « live »). Lève ValueError(message) si impossible."""
     async with async_session() as db:
@@ -80,9 +93,9 @@ async def _create(media: str, tmdb_id: int, category: str = "anime") -> str:
         title = (details.get("name") or details.get("title") or details.get("original_name") or "").strip()
         if not title:
             raise ValueError("Cette fiche TMDB n'a pas de titre.")
-        same = (await db.execute(select(Anime.id).where(func.lower(Anime.title) == title.lower()))).first()
-        if same:
-            raise ValueError(f"Un animé « {title} » existe déjà (n°{same[0]}). Utilise /fiche {same[0]} pour changer sa fiche.")
+        # Même titre qu'une fiche existante (autre TMDB) : ce n'est PAS un doublon (ex. One Piece animé 1999
+        # et la série live-action Netflix 2023). On les distingue avec l'année : « One Piece (2023) ».
+        title = await _unique_title(db, title, str(details.get("first_air_date") or details.get("release_date") or "")[:4], tmdb_id)
 
         al = None
         # Films et séries live-action : pas de recherche AniList (risque de fausse correspondance)
@@ -111,6 +124,8 @@ async def _create(media: str, tmdb_id: int, category: str = "anime") -> str:
             synopsis=meta.get("synopsis"),
             poster_url=meta.get("poster_url"),
             banner_url=meta.get("banner_url"),
+            logo_url=meta.get("logo_url"),
+            images_synced=bool(meta.get("images_synced")),
             genres=meta.get("genres") or [],
             score=meta.get("score") or 0.0,
             year=meta.get("year"),
@@ -177,9 +192,8 @@ async def _create_from_anilist(anilist_id: int) -> str:
         if not details.get("id"):
             raise ValueError("Fiche AniList introuvable.")
         title = _al_title(details).strip()
-        same = (await db.execute(select(Anime.id).where(func.lower(Anime.title) == title.lower()))).first()
-        if same:
-            raise ValueError(f"Un animé « {title} » existe déjà (n°{same[0]}). Utilise /fiche {same[0]} pour changer sa fiche.")
+        year = str(((details.get("startDate") or {}).get("year")) or "")
+        title = await _unique_title(db, title, year, anilist_id)
 
         meta = catalog_meta.merge_metadata(None, None, details, None)
         is_film = details.get("format") == "MOVIE"
@@ -198,6 +212,8 @@ async def _create_from_anilist(anilist_id: int) -> str:
             synopsis=meta.get("synopsis"),
             poster_url=meta.get("poster_url"),
             banner_url=meta.get("banner_url"),
+            logo_url=meta.get("logo_url"),
+            images_synced=bool(meta.get("images_synced")),
             genres=meta.get("genres") or [],
             score=meta.get("score") or 0.0,
             year=meta.get("year"),

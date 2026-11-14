@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ── Generic ────────────────────────────────────────────────────────────
@@ -81,6 +81,10 @@ class AnimePublic(BaseModel):
     synopsis: Optional[str] = None
     poster_url: Optional[str] = None
     banner_url: Optional[str] = None
+    # Backdrop TMDB en 780 px : vignettes paysage (épisodes, téléchargements, cartes)
+    backdrop_thumb_url: Optional[str] = None
+    logo_url: Optional[str] = None
+    posters: List[str] = []  # affiches supplémentaires (la 1re est poster_url)
     genres: Optional[List[str]] = None
     score: float = 0.0
     year: Optional[int] = None
@@ -93,6 +97,18 @@ class AnimePublic(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("posters", mode="before")
+    @classmethod
+    def _posters_list(cls, value):
+        return [str(u) for u in value] if value else []
+
+    @model_validator(mode="after")
+    def _backdrop_thumb(self):
+        # Backdrop TMDB « original » (plusieurs Mo) -> 780 px pour les vignettes ; les autres sources restent telles quelles
+        if self.banner_url and not self.backdrop_thumb_url:
+            self.backdrop_thumb_url = self.banner_url.replace("/t/p/original/", "/t/p/w780/")
+        return self
 
 
 class AnimeCreate(BaseModel):
@@ -120,6 +136,7 @@ class AnimeUpdate(BaseModel):
     synopsis: Optional[str] = None
     poster_url: Optional[str] = None
     banner_url: Optional[str] = None
+    logo_url: Optional[str] = None
     genres: Optional[List[str]] = None
     score: Optional[float] = None
     year: Optional[int] = None

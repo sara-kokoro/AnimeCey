@@ -218,6 +218,8 @@ async def open_title(
             synopsis=meta.get("synopsis"),
             poster_url=meta.get("poster_url"),
             banner_url=meta.get("banner_url"),
+            logo_url=meta.get("logo_url"),
+            images_synced=bool(meta.get("images_synced")),
             genres=meta.get("genres") or [],
             score=meta.get("score") or 0.0,
             year=meta.get("year") or title.year,

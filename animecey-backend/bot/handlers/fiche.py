@@ -73,7 +73,11 @@ async def _apply(anime_id: int, media: str, tmdb_id: int) -> str:
                 break
 
         meta = catalog_meta.merge_metadata(details, media, al, anime.poster_url)
+        anime.logo_url = None  # le logo de l'ancienne fiche ne doit pas rester ; celui de la nouvelle est posé ci-dessous
         await catalog_meta.apply_metadata(db, anime, meta)
+        from services import httpcache
+
+        httpcache.clear()
         return f"✅ Fiche mise à jour pour « {anime.title} » : {_name(details)} ({meta.get('year') or '?'})."
 
 

@@ -145,9 +145,15 @@ def merge_metadata(
     poster = f"{TMDB_IMG}/w500{td['poster_path']}" if td.get("poster_path") else None
     poster = poster or (al.get("coverImage") or {}).get("extraLarge") or fallback_poster
     out["poster_url"] = poster[:500] if poster else None
-    banner = f"{TMDB_IMG}/original{td['backdrop_path']}" if td.get("backdrop_path") else None
+    # backdrop : le meilleur SANS texte si TMDB en a un, sinon celui de la fiche
+    back_path = td.get("best_backdrop_path") or td.get("backdrop_path")
+    banner = f"{TMDB_IMG}/original{back_path}" if back_path else None
     banner = banner or al.get("bannerImage")
     out["banner_url"] = banner[:500] if banner else None
+
+    # logo (français, sinon anglais...) : affiché au-dessus du titre
+    out["logo_url"] = f"{TMDB_IMG}/w500{td['logo_path']}" if td.get("logo_path") else None
+    out["images_synced"] = bool(td)  # fiche TMDB lue : logo et backdrop sont à jour
 
     # bande-annonce
     trailer = td.get("trailer_url")
@@ -207,9 +213,11 @@ async def apply_metadata(db: AsyncSession, anime, meta: dict) -> None:
         if taken:
             meta = {**meta, "anilist_id": None}
 
-    for field in ("title_jp", "synopsis", "genres", "year", "poster_url", "banner_url", "trailer_url"):
+    for field in ("title_jp", "synopsis", "genres", "year", "poster_url", "banner_url", "trailer_url", "logo_url"):
         if meta.get(field):
             setattr(anime, field, meta[field])
+    if meta.get("images_synced"):
+        anime.images_synced = True
     if meta.get("score"):
         anime.score = meta["score"]
     if meta.get("status"):

@@ -19,7 +19,7 @@ from sqlalchemy import delete, func, select
 
 from bot.handlers import quick_upload
 from bot.handlers.admin import is_admin
-from bot.handlers.supprimer import _delete_channel_messages
+from bot.handlers.supprimer import _delete_channel_messages, unshared_messages
 from database import async_session
 from models import Anime, Episode, Folder, FolderType, TmcooperSource
 from models_catalog import AnimeSeason
@@ -85,6 +85,11 @@ async def _delete_season(client: Client, anime_id: int, season_number: int, with
         await db.commit()
 
     text = f"🗑 « {label} » supprimée de « {anime.title} » ({nb_eps} épisode(s))."
+    kept = 0
+    if with_channel and msg_ids:
+        msg_ids, kept = await unshared_messages(msg_ids)
+    if kept:
+        text += f"\n{kept} fichier(s) gardé(s) dans le canal : encore utilisés par une autre fiche."
     if with_channel and msg_ids:
         done = await _delete_channel_messages(client, msg_ids)
         text += f"\nCanal : {done}/{len(msg_ids)} message(s) effacé(s)."

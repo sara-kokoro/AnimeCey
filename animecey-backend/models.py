@@ -99,6 +99,12 @@ class Anime(Base):
     downloadable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     # « anime » (animation) ou « live » (films et séries avec de vrais acteurs)
     category: Mapped[str] = mapped_column(String(10), nullable=False, default="anime", server_default="anime")
+    # Logo du titre (PNG transparent, TMDB ou ajouté à la main avec /setlogo)
+    logo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Affiches supplémentaires (2e, 3e affiche...) ajoutées à la main avec /poster : liste d'adresses
+    posters: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Images (logo + backdrop) déjà récupérées chez TMDB ? Sert au rattrapage des anciens titres.
+    images_synced: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow

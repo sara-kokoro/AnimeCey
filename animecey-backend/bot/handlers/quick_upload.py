@@ -41,7 +41,7 @@ from database import async_session
 from models import Anime, AnimeType, Episode, LanguageEnum
 from models_catalog import AnimeSeason
 from services import media as media_service
-from services import thumbs
+from services import film_link, thumbs
 from services.caption_parser import (
     Parsed, command_args, kind_of, merge_missing, norm, parse_anime_args_ex, parse_caption, pretty_label,
 )
@@ -53,6 +53,9 @@ logger = logging.getLogger(__name__)
 VIDEO_EXT = (".mkv", ".mp4", ".avi", ".webm", ".mov", ".ts", ".m4v", ".flv")
 TMP_DIR = os.getenv("TELEGRAM_TMP_DIR", tempfile.gettempdir())
 CURRENT_TTL = 3 * 3600  # /anime reste actif 3 h
+# Les vignettes tirées des vidéos ne servent plus : le site et l'app affichent le backdrop TMDB du titre.
+# Mettre EPISODE_THUMBS_FROM_VIDEO=true pour les générer encore (image extraite + envoi dans le canal).
+THUMBS_FROM_VIDEO = os.getenv("EPISODE_THUMBS_FROM_VIDEO", "").strip().lower() in ("1", "true", "yes", "on")
 # Mot à ajouter dans la légende pour remplacer un épisode déjà présent
 _REPLACE_RE = re.compile(r"(?<![\w])(remplacer|remplace|replace|[ée]craser)(?![\w])", re.I)
 
@@ -332,10 +335,16 @@ async def _prepare(admin_id: int, p: Parsed) -> dict:
                     )
                 raise _Stop("Aucun titre dans la légende. Utilise /anime <id> avant d'envoyer, ou ajoute le titre.")
             season = await _find_or_create_season(db, row.id, p.slot_key)
+            # Film rangé dans une série : on retrouve aussi sa propre fiche (« One Piece Film - Red »)
+            film_fiche = None
+            if p.kind == "film" and p.full_title:
+                sib = await film_link.find_sibling(db, p.full_title, exclude_id=row.id)
+                film_fiche = sib.id if sib else None
             await db.commit()
             return {
                 "anime_id": row.id, "anime_title": row.title,
                 "season_number": season.season_number, "season_label": season.label,
+                "film_fiche": film_fiche,
             }
 
 
@@ -395,6 +404,22 @@ async def _save_episode(
                     stale.append(ep.thumb_msg_id)
                 ep.thumb_msg_id = thumb_msg_id
                 ep.thumbnail_url = r2_url or f"{base}/api/episodes/{ep.id}/thumb?v={thumb_msg_id}"
+            # Miroir sur la fiche propre du film : même fichier du canal, aucun renvoi
+            if ctx.get("film_fiche"):
+                try:
+                    film = await db.get(Anime, ctx["film_fiche"])
+                    if film is not None:
+                        fseasons = (await db.execute(select(AnimeSeason).where(AnimeSeason.anime_id == film.id).order_by(AnimeSeason.season_number))).scalars().all()
+                        fs = fseasons[0] if fseasons else await _find_or_create_season(db, film.id, "film1")
+                        status, old_msg = await film_link.mirror_episode(
+                            db, film, fs.season_number, fs.label, language, num, sent_media.file_id, sent.id, duration,
+                            replace=allow_replace,
+                        )
+                        ctx["film_note"] = f"aussi sur la fiche « {film.title} »" if status != "kept" else f"fiche « {film.title} » déjà remplie (inchangée)"
+                        if old_msg:
+                            stale.append(old_msg)
+                except Exception:  # noqa: BLE001
+                    logger.warning("miroir film non créé", exc_info=True)
             await db.commit()
             return replaced, stale
 
@@ -611,8 +636,9 @@ def register(bot: Client):
             if direct:
                 # Déjà au bon format : copie directe dans le canal (sans retélécharger).
                 sent = await _channel_send(lambda: message.copy(chat_id=settings.TELEGRAM_CHANNEL_ID, caption=caption))
-                await ui.set("🖼️ Création de la vignette…", force=True)
-                thumb_bytes = await _remote_thumb(client, sent, duration)
+                if THUMBS_FROM_VIDEO:
+                    await ui.set("🖼️ Création de la vignette…", force=True)
+                    thumb_bytes = await _remote_thumb(client, sent, duration)
             else:
                 free = shutil.disk_usage(TMP_DIR).free
                 if size * 2.2 > free:
@@ -641,7 +667,7 @@ def register(bot: Client):
                         info = await media_service.remux_to_mp4(src, dst, on_progress=_convert_cb(ui))
                         os.remove(src)  # libère le disque dès la conversion finie
                         duration, subs, reencoded = info["duration"], info["subtitle_tracks"], info["video_reencoded"]
-                        thumb_bytes = await media_service.extract_frame(dst, duration)
+                        thumb_bytes = await media_service.extract_frame(dst, duration) if THUMBS_FROM_VIDEO else None
                         await ui.set("⬆️ Envoi dans le canal…", force=True)
                         sent = await _channel_send(
                             lambda: client.send_document(
@@ -667,6 +693,8 @@ def register(bot: Client):
                 notes.append("pistes de sous-titres séparées ignorées")
             if reencoded:
                 notes.append("vidéo réencodée en H.264")
+            if ctx.get("film_note"):
+                notes.append(ctx["film_note"])
             if purged:
                 notes.append("ancien fichier supprimé du canal")
             if thumb_msg_id is None:

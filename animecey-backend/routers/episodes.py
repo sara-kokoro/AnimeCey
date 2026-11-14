@@ -16,7 +16,7 @@ from config import settings
 from database import get_db
 from models import Anime, DownloadLog, Episode, EpisodeLike, User
 from schemas import EpisodePublic, LikeResponse, StreamResponse
-from services import byse, downloads, thumbs
+from services import byse, downloads, images, thumbs
 from services.stream_token import check_token, make_token
 
 logger = logging.getLogger(__name__)
@@ -149,7 +149,14 @@ async def list_episodes(
         .order_by(Episode.episode_number)
     )
     episodes = result.scalars().all()
-    return [EpisodePublic.model_validate(ep) for ep in episodes]
+    # Les vignettes tirées de Telegram ne sont plus utilisées : chaque épisode affiche le backdrop du titre
+    cover = images.episode_thumb(await db.get(Anime, anime_id))
+    out = []
+    for ep in episodes:
+        item = EpisodePublic.model_validate(ep)
+        item.thumbnail_url = cover
+        out.append(item)
+    return out
 
 
 _size_cache: dict[int, int] = {}
@@ -190,7 +197,9 @@ async def get_episode(episode_id: int, db: AsyncSession = Depends(get_db)):
     ep = result.scalar_one_or_none()
     if not ep:
         raise HTTPException(status_code=404, detail="Épisode introuvable")
-    return EpisodePublic.model_validate(ep)
+    item = EpisodePublic.model_validate(ep)
+    item.thumbnail_url = images.episode_thumb(await db.get(Anime, ep.anime_id))
+    return item
 
 
 async def _downloads_last_day(db: AsyncSession, user_id: int) -> int:

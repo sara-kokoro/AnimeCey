@@ -51,7 +51,7 @@ export async function ensureCover(animeId: number): Promise<void> {
   inFlight.add(animeId);
   try {
     const anime = await fetchAnime(animeId);
-    const source = anime.banner_url || anime.poster_url;
+    const source = anime.backdrop_thumb_url || anime.banner_url || anime.poster_url;
     if (!source) return;
     const data = await shrink(source);
     try {

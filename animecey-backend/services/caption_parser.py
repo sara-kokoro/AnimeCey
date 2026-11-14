@@ -101,6 +101,9 @@ class Parsed:
     episode: int | None = None
     lang: str | None = None       # "VF" | "VOSTFR" | None
     multi: bool = False
+    # Titre COMPLET d'un film, mot « Film » gardé : « One Piece Film Red » (title = « One Piece »).
+    # Sert à retrouver la fiche propre du film (voir quick_upload._film_sibling).
+    full_title: str | None = None
 
     @property
     def kind(self) -> str:
@@ -115,6 +118,7 @@ def merge_missing(a: Parsed, b: Parsed) -> Parsed:
         episode=a.episode if a.episode is not None else b.episode,
         lang=a.lang or b.lang,
         multi=a.multi or (b.multi and a.lang is None),
+        full_title=a.full_title or b.full_title,
         slot_key=a.slot_key if not a.slot_defaulted else b.slot_key,
         slot_defaulted=a.slot_defaulted and b.slot_defaulted,
     )
@@ -157,6 +161,7 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
 
     # ── emplacement + épisode ──
     slot, episode = None, None
+    film_start: int | None = None  # début du mot « Film » : le titre complet du film le garde
     m = _SXXEYY.search(work)
     if m:
         slot = f"saison{int(m.group(1))}" + (f"partie{int(m.group(2))}" if m.group(2) else "")
@@ -188,7 +193,7 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
     if slot is None:
         m = _FILM.search(work)
         if m:
-            slot = f"film{int(m.group(1) or 1)}"; starts.append(m.start()); work = _blank(work, m)
+            slot = f"film{int(m.group(1) or 1)}"; starts.append(m.start()); film_start = m.start(); work = _blank(work, m)
     if slot is None:
         m = _OAV.search(work)
         if m:
@@ -241,7 +246,21 @@ def parse_caption(text: str, is_filename: bool = False) -> Parsed:
     if title and len(title) < 2:
         title = None
 
-    return Parsed(title=title, slot_key=key, slot_defaulted=defaulted, episode=episode, lang=lang, multi=multi)
+    # Film : « One Piece Film Red » = titre « One Piece » + emplacement film1, mais le film a peut-être sa propre
+    # fiche « One Piece Film - Red ». On garde donc aussi le titre complet, coupé au premier marqueur AUTRE que « Film ».
+    full_title = None
+    if film_start is not None:
+        others = [s for s in starts if s != film_start]
+        full = t[: min(others) if others else len(t)]
+        full = _NOISE.sub(" ", _LANG.sub(" ", full))
+        lines = [ln.strip(" \t-–—·|:,[]()") for ln in full.splitlines()]
+        lines = [ln for ln in lines if re.search(r"\w", ln)]
+        full_title = re.sub(r"\s+", " ", lines[-1]).strip() if lines else None
+
+    return Parsed(
+        title=title, slot_key=key, slot_defaulted=defaulted, episode=episode, lang=lang, multi=multi,
+        full_title=full_title,
+    )
 
 
 # ── Options de la commande /anime : « /anime 16 VF S01 », « /anime Naruto arc 3 remplacer » ──
