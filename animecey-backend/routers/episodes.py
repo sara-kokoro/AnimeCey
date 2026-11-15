@@ -218,7 +218,7 @@ async def _downloadable(episode_id: int, db: AsyncSession) -> tuple[Episode, Ani
     if not ep:
         raise HTTPException(status_code=404, detail="Épisode introuvable")
     anime = await db.get(Anime, ep.anime_id)
-    if not anime or not anime.downloadable or not (ep.servcey1_available and ep.servcey1_file_id):
+    if not anime or not (settings.DOWNLOADS_FOR_ALL or anime.downloadable) or not (ep.servcey1_available and ep.servcey1_file_id):
         raise HTTPException(status_code=403, detail="Le téléchargement n'est pas disponible pour cet épisode")
     return ep, anime
 
@@ -234,7 +234,7 @@ async def download_info(
     if not ep:
         raise HTTPException(status_code=404, detail="Épisode introuvable")
     anime = await db.get(Anime, ep.anime_id)
-    ok = bool(anime and anime.downloadable and ep.servcey1_available and ep.servcey1_file_id)
+    ok = bool(anime and (settings.DOWNLOADS_FOR_ALL or anime.downloadable) and ep.servcey1_available and ep.servcey1_file_id)
     remaining = None
     if ok and user:
         remaining = max(0, downloads.DAILY_LIMIT - await _downloads_last_day(db, user.id))

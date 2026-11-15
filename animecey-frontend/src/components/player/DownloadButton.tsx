@@ -5,6 +5,7 @@ import { Check, Download, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuthStore } from "@/stores/auth";
+import { isNativeApp } from "@/lib/nativeDownloads";
 import { downloadFileUrl, fetchDownloadInfo, requestDownloadTicket } from "@/api/episodes";
 
 type Phase = "idle" | "waiting" | "ready";
@@ -33,6 +34,7 @@ export function DownloadButton({ episodeId }: { episodeId: number }) {
     queryKey: infoKey,
     queryFn: () => fetchDownloadInfo(episodeId),
     staleTime: 60_000,
+    enabled: !isNativeApp(), // l'app a son propre téléchargement hors ligne
   });
 
   // Compte à rebours pendant que la pub est affichée
@@ -53,7 +55,7 @@ export function DownloadButton({ episodeId }: { episodeId: number }) {
     setTicket(null);
   }, [episodeId]);
 
-  if (!info?.downloadable) return null;
+  if (isNativeApp() || !info?.downloadable) return null;
 
   const onOpen = () => {
     if (!isAuthenticated) {

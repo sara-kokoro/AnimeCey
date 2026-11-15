@@ -9,7 +9,7 @@ const KEY = "magi:communitySeen";
 const EVERY_DAYS = 3;
 const DELAY_MS = 7000;
 // pages où l'on ne dérange pas l'utilisateur
-const SKIP = ["/watch", "/admin", "/auth", "/don", "/telechargements"];
+const SKIP = ["/watch", "/admin", "/auth", "/don", "/donate", "/telechargements"];
 
 /**
  * Fenêtre « Communauté Magi-Stream » (site et application) : Telegram, don et, sur le site, l'application Android.

@@ -25,6 +25,8 @@ class _Settings:
         "IHUbWjz5614iPbdrHVbCnnO8mbSJzgOrwBJ4FjbgZYQm0UizUmi8OKvbExVxW3n5zi61U8Dc8b3FJhhq+PKwfQ==",
     )
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
+    # Bouton « Télécharger » du site pour TOUS les épisodes (mettre DOWNLOADS_FOR_ALL=false pour revenir au réglage /dl par titre)
+    DOWNLOADS_FOR_ALL: bool = os.getenv("DOWNLOADS_FOR_ALL", "true").strip().lower() in ("1", "true", "yes", "on")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080")
     )

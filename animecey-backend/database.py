@@ -37,57 +37,47 @@ class Base(DeclarativeBase):
     pass
 
 
+_MIGRATIONS = [
+    # Colonnes ajoutées au fil des versions (IF NOT EXISTS : sans risque). Les plus récentes d'abord,
+    # chaque instruction dans SA PROPRE transaction : un verrou ou une erreur sur l'une n'empêche pas les autres.
+    "ALTER TABLE animes ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500)",
+    "ALTER TABLE animes ADD COLUMN IF NOT EXISTS posters JSON",
+    "ALTER TABLE animes ADD COLUMN IF NOT EXISTS images_synced BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE animes ADD COLUMN IF NOT EXISTS category VARCHAR(10) NOT NULL DEFAULT 'anime'",
+    "ALTER TABLE animes ADD COLUMN IF NOT EXISTS downloadable BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS servcey1_msg_id INTEGER",
+    "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS stream_url TEXT",
+    "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS stream_type VARCHAR(10)",
+    "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS links_refreshed_at TIMESTAMPTZ",
+    "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS thumb_msg_id INTEGER",
+    "ALTER TABLE anime_seasons ADD COLUMN IF NOT EXISTS kind VARCHAR(16)",
+    "ALTER TABLE app_notifications ALTER COLUMN path TYPE VARCHAR(1000)",
+    "UPDATE anime_seasons SET kind = CASE "
+    "WHEN api_season LIKE 'saison%' THEN 'saison' "
+    "WHEN api_season LIKE 'saga%' THEN 'saga' "
+    "WHEN api_season LIKE 'film%' THEN 'film' "
+    "WHEN api_season LIKE 'oav%' THEN 'oav' "
+    "WHEN api_season LIKE 'special%' THEN 'special' "
+    "ELSE 'autre' END WHERE kind IS NULL",
+]
+
+
 async def init_db() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # Add new columns to existing tables (safe: IF NOT EXISTS)
-        await conn.execute(text(
-            "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS servcey1_msg_id INTEGER"
-        ))
-        # TMCooper : lien de lecture résolu + date du dernier rafraîchissement
-        await conn.execute(text(
-            "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS stream_url TEXT"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS stream_type VARCHAR(10)"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS links_refreshed_at TIMESTAMPTZ"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE episodes ADD COLUMN IF NOT EXISTS thumb_msg_id INTEGER"
-        ))
-        # Catégorie : « anime » (animation) ou « live » (films et séries avec de vrais acteurs)
-        await conn.execute(text(
-            "ALTER TABLE animes ADD COLUMN IF NOT EXISTS category VARCHAR(10) NOT NULL DEFAULT 'anime'"
-        ))
-        # Téléchargement autorisé par titre (commande /dl du bot)
-        await conn.execute(text(
-            "ALTER TABLE animes ADD COLUMN IF NOT EXISTS downloadable BOOLEAN NOT NULL DEFAULT FALSE"
-        ))
-        # Logo, affiches supplémentaires et suivi du rattrapage des images TMDB
-        await conn.execute(text("ALTER TABLE animes ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500)"))
-        await conn.execute(text("ALTER TABLE animes ADD COLUMN IF NOT EXISTS posters JSON"))
-        await conn.execute(text(
-            "ALTER TABLE animes ADD COLUMN IF NOT EXISTS images_synced BOOLEAN NOT NULL DEFAULT FALSE"
-        ))
-        # Type d'emplacement (saison, saga, film, oav...) pour les filtres et les icônes
-        await conn.execute(text(
-            "ALTER TABLE anime_seasons ADD COLUMN IF NOT EXISTS kind VARCHAR(16)"
-        ))
-        await conn.execute(text(
-            "UPDATE anime_seasons SET kind = CASE "
-            "WHEN api_season LIKE 'saison%' THEN 'saison' "
-            "WHEN api_season LIKE 'saga%' THEN 'saga' "
-            "WHEN api_season LIKE 'film%' THEN 'film' "
-            "WHEN api_season LIKE 'oav%' THEN 'oav' "
-            "WHEN api_season LIKE 'special%' THEN 'special' "
-            "ELSE 'autre' END WHERE kind IS NULL"
-        ))
-        # Notifications de l'app : le clic peut mener à un lien externe (plus long que 200 caractères)
-        await conn.execute(text(
-            "ALTER TABLE app_notifications ALTER COLUMN path TYPE VARCHAR(1000)"
-        ))
+    import logging
+
+    log = logging.getLogger("animecey")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as exc:  # noqa: BLE001
+        log.error("create_all impossible (%s) : on continue avec les colonnes", exc)
+    for sql in _MIGRATIONS:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text("SET LOCAL lock_timeout = '8s'"))
+                await conn.execute(text(sql))
+        except Exception as exc:  # noqa: BLE001
+            log.error("Migration ignorée (%s) : %s", sql[:70], exc)
 
 
 async def get_db():
