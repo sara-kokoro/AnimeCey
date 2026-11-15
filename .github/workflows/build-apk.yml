@@ -9,6 +9,8 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-24.04
+    # Les 3 secrets de signature ont été créés dans l'environnement « MAGI_KEYSTORE_BASE64 » (Settings > Environments)
+    environment: MAGI_KEYSTORE_BASE64
     steps:
       - uses: actions/checkout@v4
 
@@ -36,9 +38,7 @@ jobs:
           cd "$APP_DIR/.."
           npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts
           npm run build:offline
-          echo "Dossier courant : $(pwd)"
-          ls -la app/www || true
-          if ! grep -q 'magi-offline' app/www/offline.html; then
+          if ! grep -q 'magi-offline' "$APP_DIR/www/offline.html"; then
             echo "::error::La page hors connexion embarquée n'est pas la dernière version : offline/offline.html du dépôt est ancien."
             exit 1
           fi
@@ -59,6 +59,24 @@ jobs:
           fi
           if [ -f "$APP_DIR/google-services.json" ]; then echo "Firebase activé"; else echo "::warning::google-services.json absent : notifications Firebase désactivées"; fi
 
+      - name: Clé de signature (secrets GitHub)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MAGI_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.MAGI_KEYSTORE_PASSWORD }}
+          KEY_ALIAS_IN: ${{ secrets.MAGI_KEY_ALIAS }}
+          KEY_PASS_IN: ${{ secrets.MAGI_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KS_PASS" ] || [ -z "$KEY_ALIAS_IN" ]; then
+            echo "::error::Secrets manquants : MAGI_KEYSTORE_BASE64, MAGI_KEYSTORE_PASSWORD, MAGI_KEY_ALIAS (et MAGI_KEY_PASSWORD si différent). Voir README."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/magi-release.jks"
+          echo "MAGI_KEYSTORE_FILE=$RUNNER_TEMP/magi-release.jks" >> "$GITHUB_ENV"
+          echo "MAGI_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+          echo "MAGI_KEY_ALIAS=$KEY_ALIAS_IN" >> "$GITHUB_ENV"
+          echo "MAGI_KEY_PASSWORD=${KEY_PASS_IN:-$KS_PASS}" >> "$GITHUB_ENV"
+        # (MAGI_KEY_PASSWORD optionnel : s'il n'existe pas, le mot de passe du keystore est utilisé)
+
       - name: Installer Capacitor et créer le projet Android
         run: |
           cd "$APP_DIR"
@@ -67,30 +85,17 @@ jobs:
           python3 scripts/prepare-android.py "${{ github.run_number }}"
           npx cap sync android
 
-      - name: Clé de signature
-        run: |
-          mkdir -p ~/.android
-          cp "$APP_DIR/debug.keystore" ~/.android/debug.keystore
-
-      - name: Compiler l'APK
+      - name: Compiler l'APK (release signé)
         run: |
           cd "$APP_DIR/android"
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
 
       - name: Empreinte de la signature (doit rester identique à chaque construction)
         run: |
-          keytool -printcert -jarfile "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" | grep -E "Owner|SHA256"
+          keytool -printcert -jarfile "$APP_DIR/android/app/build/outputs/apk/release/app-release.apk" | grep -E "Owner|SHA256"
 
       - name: Renommer l'APK
-        run: cp "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" magi-stream.apk
-
-      - name: Page hors connexion réellement présente dans l'APK (diagnostic)
-        run: |
-          echo "--- début de assets/public/offline.html dans l'APK ---"
-          unzip -p magi-stream.apk assets/public/offline.html | head -c 1500 || true
-          echo
-          echo "--- fichiers assets/public/ ---"
-          unzip -l magi-stream.apk | grep "assets/public/" | head -20 || true
+        run: cp "$APP_DIR/android/app/build/outputs/apk/release/app-release.apk" magi-stream.apk
 
       - uses: actions/upload-artifact@v4
         with:
