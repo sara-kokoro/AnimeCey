@@ -21,8 +21,9 @@ jobs:
             echo "::error::Dossier app/ introuvable : ajoute-le au dépôt (animecey-frontend/app avec capacitor.config.json)."
             exit 1
           fi
-          echo "APP_DIR=$(dirname "$CFG")" >> "$GITHUB_ENV"
-          echo "Dossier trouvé : $(dirname "$CFG")"
+          APP_ABS=$(cd "$(dirname "$CFG")" && pwd)
+          echo "APP_DIR=$APP_ABS" >> "$GITHUB_ENV"
+          echo "Dossier trouvé : $APP_ABS"
 
       - uses: actions/setup-node@v4
         with:
