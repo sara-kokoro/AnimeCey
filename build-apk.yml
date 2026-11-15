@@ -9,6 +9,8 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-24.04
+    # Les 3 secrets de signature ont été créés dans l'environnement « MAGI_KEYSTORE_BASE64 » (Settings > Environments)
+    environment: MAGI_KEYSTORE_BASE64
     steps:
       - uses: actions/checkout@v4
 
@@ -31,12 +33,49 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Construire la page hors connexion (React, embarquée dans l'APK)
+        run: |
+          cd "$APP_DIR/.."
+          npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts
+          npm run build:offline
+          if ! grep -q 'magi-offline' "$APP_DIR/www/offline.html"; then
+            echo "::error::La page hors connexion embarquée n'est pas la dernière version : offline/offline.html du dépôt est ancien."
+            exit 1
+          fi
+
       - name: Installer ImageMagick (icône) et accepter les licences Android
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq imagemagick
           command -v convert || sudo ln -s "$(command -v magick)" /usr/local/bin/convert
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Clé Firebase (google-services.json, optionnelle)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > "$APP_DIR/google-services.json"
+          fi
+          if [ -f "$APP_DIR/google-services.json" ]; then echo "Firebase activé"; else echo "::warning::google-services.json absent : notifications Firebase désactivées"; fi
+
+      - name: Clé de signature (secrets GitHub)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.MAGI_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.MAGI_KEYSTORE_PASSWORD }}
+          KEY_ALIAS_IN: ${{ secrets.MAGI_KEY_ALIAS }}
+          KEY_PASS_IN: ${{ secrets.MAGI_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KS_PASS" ] || [ -z "$KEY_ALIAS_IN" ]; then
+            echo "::error::Secrets manquants : MAGI_KEYSTORE_BASE64, MAGI_KEYSTORE_PASSWORD, MAGI_KEY_ALIAS (et MAGI_KEY_PASSWORD si différent). Voir README."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/magi-release.jks"
+          echo "MAGI_KEYSTORE_FILE=$RUNNER_TEMP/magi-release.jks" >> "$GITHUB_ENV"
+          echo "MAGI_KEYSTORE_PASSWORD=$KS_PASS" >> "$GITHUB_ENV"
+          echo "MAGI_KEY_ALIAS=$KEY_ALIAS_IN" >> "$GITHUB_ENV"
+          echo "MAGI_KEY_PASSWORD=${KEY_PASS_IN:-$KS_PASS}" >> "$GITHUB_ENV"
+        # (MAGI_KEY_PASSWORD optionnel : s'il n'existe pas, le mot de passe du keystore est utilisé)
 
       - name: Installer Capacitor et créer le projet Android
         run: |
@@ -46,22 +85,17 @@ jobs:
           python3 scripts/prepare-android.py "${{ github.run_number }}"
           npx cap sync android
 
-      - name: Clé de signature
-        run: |
-          mkdir -p ~/.android
-          cp "$APP_DIR/debug.keystore" ~/.android/debug.keystore
-
-      - name: Compiler l'APK
+      - name: Compiler l'APK (release signé)
         run: |
           cd "$APP_DIR/android"
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleRelease --no-daemon
 
       - name: Empreinte de la signature (doit rester identique à chaque construction)
         run: |
-          keytool -printcert -jarfile "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" | grep -E "Owner|SHA256"
+          keytool -printcert -jarfile "$APP_DIR/android/app/build/outputs/apk/release/app-release.apk" | grep -E "Owner|SHA256"
 
       - name: Renommer l'APK
-        run: cp "$APP_DIR/android/app/build/outputs/apk/debug/app-debug.apk" magi-stream.apk
+        run: cp "$APP_DIR/android/app/build/outputs/apk/release/app-release.apk" magi-stream.apk
 
       - uses: actions/upload-artifact@v4
         with:
