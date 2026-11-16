@@ -1,8 +1,18 @@
 /** API publique des dons (JessiKaPay). Aucun compte requis. */
 const BASE = (import.meta.env.VITE_JKPAY_API_URL as string | undefined)?.replace(/\/+$/, "") || "https://preferred-antonia-youtub-c1a62de8.koyeb.app";
 
-export type DonateCountry = { code: string; name: string; operators: string[] };
-export type DonateConfig = { min: number; max: number; presets: number[]; currency: string; countries: DonateCountry[] };
+export type DonateCountry = {
+  code: string;
+  name: string;
+  dial: string;
+  currency: string;
+  rate_fcfa?: number;
+  min: number;
+  max: number;
+  presets: number[];
+  operators: string[];
+};
+export type DonateConfig = { countries: DonateCountry[] };
 export type DonationStatus = "awaiting_payment" | "paid" | "failed" | "expired";
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
@@ -24,4 +34,4 @@ export const createDonation = (body: { amount: number; country: string; operator
   call<{ id: string; status: DonationStatus; payment_url: string }>("/donate/create", { method: "POST", body: JSON.stringify(body) });
 
 export const fetchDonationStatus = (id: string) =>
-  call<{ status: DonationStatus; amount: number; donor_name: string | null }>(`/donate/status/${encodeURIComponent(id)}`);
+  call<{ status: DonationStatus; amount: number; currency: string; donor_name: string | null }>(`/donate/status/${encodeURIComponent(id)}`);

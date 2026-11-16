@@ -11,7 +11,6 @@ import { EpisodeCard } from "@/components/anime/EpisodeCard";
 import { AnimeGrid } from "@/components/anime/AnimeGrid";
 import { fetchAnime, fetchSimilar } from "@/api/animes";
 import { AnimeCredits } from "@/components/anime/AnimeCredits";
-import { PosterGallery } from "@/components/anime/PosterGallery";
 import { Seo } from "@/components/Seo";
 import { fetchEpisodes, fetchEpisodeSizes } from "@/api/episodes";
 import { SeasonDownloadBar } from "@/components/anime/SeasonDownloadBar";
@@ -229,29 +228,12 @@ export default function AnimeDetail() {
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.5 }}
+            className="w-[180px] md:w-[230px] aspect-[2/3] rounded-2xl overflow-hidden shadow-card ring-1 ring-foreground/10 -rotate-1 hover:rotate-0 transition-transform"
           >
-            <PosterGallery title={anime.title} posters={[anime.poster_url, ...(anime.posters ?? [])].filter(Boolean)} />
+            <img src={anime.poster_url} alt={anime.title} className="w-full h-full object-cover" />
           </motion.div>
 
-          {/* Logo du titre (TMDB ou ajouté depuis le bot) au-dessus du nom écrit ; sans logo, le nom reste en grand */}
-          {anime.logo_url && (
-            <img
-              src={anime.logo_url}
-              alt=""
-              aria-hidden="true"
-              className="mt-6 max-h-24 md:max-h-32 w-auto max-w-[85%] object-contain drop-shadow-[0_2px_14px_rgba(0,0,0,0.65)]"
-              onError={(e) => {
-                e.currentTarget.style.display = "none"; // logo introuvable : le nom écrit suffit
-              }}
-            />
-          )}
-          <h1
-            className={`font-display font-black leading-tight ${
-              anime.logo_url ? "mt-3 text-xl md:text-3xl" : "mt-6 text-3xl md:text-5xl"
-            }`}
-          >
-            {anime.title}
-          </h1>
+          <h1 className="mt-6 font-display font-black text-3xl md:text-5xl leading-tight">{anime.title}</h1>
           {anime.title_jp && <p className="text-muted-foreground mt-1.5 text-sm">{anime.title_jp}</p>}
 
           <div className="mt-4 flex flex-wrap justify-center gap-2 text-[11px] font-semibold">

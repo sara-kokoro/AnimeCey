@@ -31,18 +31,23 @@ public class MainActivity extends BridgeActivity {
     /** Page hors connexion embarquée dans l'APK (app/www/offline.html), servie par Capacitor en https://localhost. */
     private static final String OFFLINE_URL = "https://localhost/offline.html";
     /** Au-delà de ce délai sans réponse du site (progression < 25 %), on bascule sur la page hors connexion. */
-    private static final long SITE_TIMEOUT_MS = 12000;
+    private static final long SITE_TIMEOUT_MS = 30000;
 
-    /** true si le téléphone a un accès réel à internet (un Wi-Fi sans internet donne false). */
+    /**
+     * true dès qu'un réseau (Wi-Fi, données mobiles, forfait « zero-rated » ou illimité) est actif.
+     * On ne demande PAS à Android de « valider » la connexion : les forfaits qui n'ouvrent que certains sites
+     * (zero-rating) échouent à cette validation alors qu'ils fonctionnent très bien pour Magi-Stream.
+     */
     private boolean hasInternet() {
         try {
             ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
             Network n = cm.getActiveNetwork();
-            if (n == null) return false;
-            NetworkCapabilities c = cm.getNetworkCapabilities(n);
-            return c != null
-                    && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-                    && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+            if (n != null) return true;
+            for (Network x : cm.getAllNetworks()) {
+                NetworkCapabilities c = cm.getNetworkCapabilities(x);
+                if (c != null && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return true;
+            }
+            return false;
         } catch (Exception e) {
             return true; // doute : on laisse le site essayer
         }

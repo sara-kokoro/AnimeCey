@@ -44,6 +44,7 @@ export function LottieCoin({ coin, size = 44 }: { coin: string; size?: number })
   const [playing, setPlaying] = useState(false);
   const [visible, setVisible] = useState(false);
   const [tick, setTick] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const el = box.current;
@@ -65,6 +66,7 @@ export function LottieCoin({ coin, size = 44 }: { coin: string; size?: number })
     if (!visible) return;
     let anim: { destroy: () => void } | null = null;
     let cancelled = false;
+    setLoading(true);
     idle(() => {
       if (cancelled) return;
       void (async () => {
@@ -87,6 +89,8 @@ export function LottieCoin({ coin, size = 44 }: { coin: string; size?: number })
           });
         } catch {
           /* l'image statique reste affichée */
+        } finally {
+          if (!cancelled) setLoading(false);
         }
       })();
     });
@@ -113,6 +117,9 @@ export function LottieCoin({ coin, size = 44 }: { coin: string; size?: number })
         className="w-full h-full object-contain"
         style={{ opacity: playing ? 0 : 1 }}
       />
+      {loading && !playing && (
+        <span className="absolute -right-1 -bottom-1 w-4 h-4 rounded-full border-2 border-primary/30 border-t-primary animate-spin" aria-label="Chargement" />
+      )}
     </div>
   );
 }

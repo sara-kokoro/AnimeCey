@@ -62,7 +62,6 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
 
   requestDownloads: async (items) => {
     if (get().adBatch) throw new Error("Une publicité de téléchargement est déjà ouverte.");
-    if (!navigator.onLine) throw new Error("Reconnecte-toi pour télécharger des épisodes.");
     if (!RICHADS.vastTag.trim()) return get().enqueue(items); // pas de pub configurée : téléchargement direct
     // Réserver le lot avant les lectures IndexedDB pour éviter deux demandes simultanées.
     const id = ++batchSequence;

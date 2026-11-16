@@ -4,7 +4,27 @@ import { toast } from "sonner";
 import { WALLETS } from "@/config/social";
 import { LottieCoin } from "./LottieCoin";
 
-const COIN: Record<string, string> = { ton: "ton", evm: "eth", sol: "sol", tron: "tron", btc: "btc" };
+const ADDR = Object.fromEntries(WALLETS.map((w) => [w.id, w.address])) as Record<string, string>;
+
+/** USDT : un seul jeton, plusieurs réseaux. Chaque réseau pointe vers l'adresse du bon portefeuille. */
+const USDT_NETWORKS = [
+  { id: "trc20", label: "Tron (TRC-20)", address: ADDR.tron, note: "Le moins cher : recommandé." },
+  { id: "bep20", label: "BNB Chain (BEP-20)", address: ADDR.evm, note: "Réseau BNB Smart Chain." },
+  { id: "erc20", label: "Ethereum (ERC-20)", address: ADDR.evm, note: "Frais plus élevés." },
+  { id: "sol", label: "Solana", address: ADDR.sol, note: "Réseau Solana." },
+  { id: "ton", label: "TON", address: ADDR.ton, note: "USDT sur le réseau TON." },
+  { id: "evm", label: "Polygon · Arbitrum · Base · Avalanche", address: ADDR.evm, note: "Autres réseaux compatibles Ethereum." },
+];
+
+/** Autres actifs : on envoie la monnaie native de chaque réseau. */
+const ASSETS = [
+  { id: "btc", coin: "btc", name: "Bitcoin (BTC)", network: "Réseau Bitcoin", address: ADDR.btc },
+  { id: "ton", coin: "ton", name: "TON", network: "Réseau TON", address: ADDR.ton },
+  { id: "trx", coin: "tron", name: "Tron (TRX)", network: "Réseau Tron", address: ADDR.tron },
+  { id: "eth", coin: "eth", name: "Ethereum (ETH)", network: "Ethereum, Base, Arbitrum…", address: ADDR.evm },
+  { id: "bnb", coin: "bnb", name: "BNB", network: "BNB Chain", address: ADDR.evm },
+  { id: "sol", coin: "sol", name: "Solana (SOL)", network: "Réseau Solana", address: ADDR.sol },
+];
 
 async function copyText(text: string): Promise<boolean> {
   try {
@@ -42,6 +62,8 @@ function Heart({ className = "" }: { className?: string }) {
 export function DonateCard({ compact = false, className = "" }: { compact?: boolean; className?: string }) {
   const [open, setOpen] = useState(!compact);
   const [copied, setCopied] = useState<string | null>(null);
+  const [net, setNet] = useState(USDT_NETWORKS[0].id);
+  const usdt = USDT_NETWORKS.find((n) => n.id === net) ?? USDT_NETWORKS[0];
 
   const copy = async (id: string, address: string) => {
     if (await copyText(address)) {
@@ -80,25 +102,57 @@ export function DonateCard({ compact = false, className = "" }: { compact?: bool
 
       {open && (
         <>
-          <ul className="mt-3 space-y-2.5">
-            {WALLETS.map((w) => (
-              <li key={w.id} className="rounded-2xl bg-surface border border-border-subtle p-3">
+          {/* USDT */}
+          <div className="mt-3 rounded-2xl bg-surface border border-border-subtle p-3">
+            <div className="flex items-center gap-3">
+              <LottieCoin coin="usdt" />
+              <div className="min-w-0">
+                <p className="font-display font-bold leading-tight">USDT (Tether)</p>
+                <p className="text-xs text-muted-foreground">Choisis le réseau sur lequel tu envoies</p>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {USDT_NETWORKS.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => setNet(n.id)}
+                  className={`h-9 px-3 rounded-full border text-xs font-bold transition-colors ${net === n.id ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border hover:border-primary/60"}`}
+                >
+                  {n.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">{usdt.note}</p>
+            <p className="mt-2 rounded-xl bg-background border border-border px-3 py-2 font-mono text-[12px] break-all select-all">{usdt.address}</p>
+            <button
+              onClick={() => void copy(`usdt-${usdt.id}`, usdt.address)}
+              className="mt-2.5 inline-flex items-center gap-2 h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-bold hover:bg-primary-dim transition-colors"
+            >
+              {copied === `usdt-${usdt.id}` ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              {copied === `usdt-${usdt.id}` ? "Copié" : "Copier l'adresse"}
+            </button>
+          </div>
+
+          {/* Autres actifs */}
+          <h3 className="mt-4 text-xs font-bold uppercase tracking-wide text-muted-foreground">Autres cryptos</h3>
+          <ul className="mt-2 space-y-2.5">
+            {ASSETS.map((a) => (
+              <li key={a.id} className="rounded-2xl bg-surface border border-border-subtle p-3">
                 <div className="flex items-center gap-3">
-                  <LottieCoin coin={COIN[w.id] ?? "btc"} />
+                  <LottieCoin coin={a.coin} />
                   <div className="min-w-0">
-                    <p className="font-display font-bold leading-tight">{w.name}</p>
-                    <p className="text-xs text-muted-foreground">{w.networks}</p>
+                    <p className="font-display font-bold leading-tight">{a.name}</p>
+                    <p className="text-xs text-muted-foreground">{a.network}</p>
                   </div>
                 </div>
-                <p className="mt-2.5 rounded-xl bg-background border border-border px-3 py-2 font-mono text-[12px] break-all select-all">
-                  {w.address}
-                </p>
+                <p className="mt-2.5 rounded-xl bg-background border border-border px-3 py-2 font-mono text-[12px] break-all select-all">{a.address}</p>
                 <button
-                  onClick={() => void copy(w.id, w.address)}
+                  onClick={() => void copy(a.id, a.address)}
                   className="mt-2.5 inline-flex items-center gap-2 h-10 px-4 rounded-full bg-primary text-primary-foreground text-sm font-bold hover:bg-primary-dim transition-colors"
                 >
-                  {copied === w.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  {copied === w.id ? "Copié" : "Copier l'adresse"}
+                  {copied === a.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  {copied === a.id ? "Copié" : "Copier l'adresse"}
                 </button>
               </li>
             ))}

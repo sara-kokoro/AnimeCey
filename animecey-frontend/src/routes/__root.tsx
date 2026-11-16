@@ -16,6 +16,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
+import { AppAds } from "@/components/ads/AppAds";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BottomNav } from "@/components/layout/BottomNav";
 import { DownloadAdModal } from "@/components/ads/DownloadAdModal";
@@ -131,11 +132,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="fr" className="dark">
+    <html lang="fr" className="dark" style={{ backgroundColor: "#070707", colorScheme: "dark" }}>
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body style={{ backgroundColor: "#070707", color: "#f8f8f8" }}>
         {/* Texte et liens dans le HTML de départ : lisibles par Google même avant le chargement de la page */}
         <div className="sr-only">
           <p>Magi-Stream : animés en streaming VF et VOSTFR gratuit, films et séries en HD.</p>
@@ -166,6 +167,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
+        <AppAds />
         <Sonner />
         <div className="pb-20 md:pb-0">
           <Outlet />

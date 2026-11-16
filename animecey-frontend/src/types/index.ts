@@ -9,12 +9,6 @@ export interface Anime {
   synopsis: string;
   poster_url: string;
   banner_url?: string;
-  /** Backdrop TMDB en 780 px : vignettes paysage (épisodes, téléchargements, cartes). */
-  backdrop_thumb_url?: string;
-  /** Logo du titre (PNG transparent), affiché au-dessus du nom. */
-  logo_url?: string;
-  /** Affiches supplémentaires ajoutées depuis le bot (la principale reste poster_url). */
-  posters?: string[];
   genres: string[];
   score: number;
   year: number;

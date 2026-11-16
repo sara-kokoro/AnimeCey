@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { isNativeApp } from "@/lib/nativeDownloads";
 
 // Zone Monetag « Vignette » de magi-stream.online. Surchargeable avec VITE_MONETAG_VIGNETTE_ZONE.
 const ZONE: string = import.meta.env.VITE_MONETAG_VIGNETTE_ZONE ?? "12139879";
@@ -11,6 +12,7 @@ const SRC = "https://n6wxm.com/vignette.min.js";
  */
 export function VignetteAd() {
   useEffect(() => {
+    if (isNativeApp()) return; // l'application a sa propre zone Vignette (voir AppAds)
     const script = document.createElement("script");
     script.dataset.zone = ZONE;
     script.src = SRC;

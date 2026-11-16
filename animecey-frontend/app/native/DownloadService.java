@@ -121,8 +121,11 @@ public class DownloadService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         showForeground(buildProgress("Magi-Stream", "Préparation du téléchargement…", -1, -1));
         if (intent == null) {
+            // Redémarrage par Android après une fermeture forcée : on reprend (fichier .part + en-tête Range)
+            // les téléchargements qui étaient en cours.
+            resumeInterrupted();
             maybeStop();
-            return START_NOT_STICKY;
+            return START_STICKY;
         }
         final int id = intent.getIntExtra("episodeId", -1);
         if (ACTION_CANCEL.equals(intent.getAction())) {
@@ -138,7 +141,10 @@ public class DownloadService extends Service {
             JSONObject item = DownloadStore.get(this, id);
             try {
                 if (item == null) item = new JSONObject().put("episodeId", id);
-                item.put("status", "pending").put("progress", 0).put("meta", meta == null ? "{}" : meta);
+                item.put("status", "pending").put("progress", 0).put("meta", meta == null ? "{}" : meta)
+                        .put("apiBase", apiBase == null ? "" : apiBase)
+                        .put("title", title == null ? "Épisode" : title)
+                        .put("subtitle", subtitle == null ? "" : subtitle);
                 item.remove("error");
                 DownloadStore.save(this, item);
             } catch (Exception ignored) {
@@ -158,7 +164,39 @@ public class DownloadService extends Service {
                 }
             });
         }
-        return START_NOT_STICKY;
+        return START_STICKY;
+    }
+
+    /** Relance les épisodes restés « en attente » ou « en cours » (service tué par le système). */
+    private void resumeInterrupted() {
+        for (final JSONObject o : DownloadStore.all(this)) {
+            String st = o.optString("status");
+            if (!"downloading".equals(st) && !"pending".equals(st)) continue;
+            final int id = o.optInt("episodeId", -1);
+            final String apiBase = o.optString("apiBase", "");
+            if (id < 0 || apiBase.isEmpty() || CANCELLED.contains(id)) continue;
+            final String title = o.optString("title", "Épisode");
+            final String subtitle = o.optString("subtitle", "");
+            queued.incrementAndGet();
+            worker.execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        download(id, apiBase, title, subtitle);
+                    } finally {
+                        queued.decrementAndGet();
+                        currentId = -1;
+                        maybeStop();
+                    }
+                }
+            });
+        }
+    }
+
+    /** L'utilisateur ferme l'app depuis les applications récentes : le téléchargement continue (service au premier plan). */
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override

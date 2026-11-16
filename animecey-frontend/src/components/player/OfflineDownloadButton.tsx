@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchEpisodeSizes } from "@/api/episodes";
 import { useIsApp } from "@/hooks/useIsApp";
 import { fmtSize } from "@/lib/fileSize";
-import { getWifiOnly, isOnWifi } from "@/lib/appPrefs";
 import { hasVideo } from "@/lib/offlineDb";
 import { useDownloadsStore } from "@/stores/downloads";
 import type { Episode } from "@/types";
@@ -62,10 +61,6 @@ export function OfflineDownloadButton({ episode, animeTitle, seasonLabel, size, 
     }
     if (task) {
       toast.info("Cet épisode est déjà dans la file de téléchargement.");
-      return;
-    }
-    if (isApp && getWifiOnly() && !isOnWifi()) {
-      toast.error("Tu n'es pas sur le Wi-Fi. Connecte-toi au Wi-Fi ou désactive « Wi-Fi seulement » (bandeau de la saison).");
       return;
     }
     await enqueue([

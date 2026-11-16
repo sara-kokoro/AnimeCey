@@ -3,7 +3,6 @@ import { CloudDownload, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { useIsApp } from "@/hooks/useIsApp";
 import { fmtSize } from "@/lib/fileSize";
-import { getWifiOnly, isOnWifi, setWifiOnly } from "@/lib/appPrefs";
 import { useDownloadsStore } from "@/stores/downloads";
 import type { Episode } from "@/types";
 
@@ -27,11 +26,9 @@ export function SeasonDownloadBar({ episodes, animeTitle, seasonNumber, seasonLa
   const isApp = useIsApp();
   const enqueue = useDownloadsStore((s) => s.requestDownloads);
   const [hidden, setHidden] = useState(false);
-  const [wifiOnly, setWifi] = useState(true);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    setWifi(getWifiOnly());
     try {
       setHidden(sessionStorage.getItem(HIDE_KEY) === "1");
     } catch {
@@ -66,10 +63,6 @@ export function SeasonDownloadBar({ episodes, animeTitle, seasonNumber, seasonLa
   };
 
   const start = async () => {
-    if (wifiOnly && !isOnWifi()) {
-      toast.error("Tu n'es pas sur le Wi-Fi. Connecte-toi au Wi-Fi ou décoche « Wi-Fi seulement ».");
-      return;
-    }
     setBusy(true);
     try {
       const n = await enqueue(
@@ -125,18 +118,6 @@ export function SeasonDownloadBar({ episodes, animeTitle, seasonNumber, seasonLa
         </span>
       </button>
       <p className="mt-2 text-[11px] text-muted-foreground">Une courte pub vidéo s'affiche avant le téléchargement.</p>
-      <label className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground select-none">
-        <input
-          type="checkbox"
-          checked={wifiOnly}
-          onChange={(e) => {
-            setWifi(e.target.checked);
-            setWifiOnly(e.target.checked);
-          }}
-          className="accent-[hsl(var(--primary))] w-4 h-4"
-        />
-        Wi-Fi seulement
-      </label>
     </div>
   );
 }

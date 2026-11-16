@@ -38,3 +38,18 @@ export const MONETAG = {
     src: "https://nap5k.com/tag.min.js",
   },
 };
+
+/**
+ * Pubs Monetag réservées à l'APPLICATION Android (jamais sur le site) :
+ * Vignette (bannière plein écran) et In-Page Push, chargées une fois à l'ouverture de l'app.
+ */
+export const APP_ADS = {
+  vignette: {
+    zone: (env.VITE_APP_VIGNETTE_ZONE as string | undefined) ?? "11978346",
+    src: "https://n6wxm.com/vignette.min.js",
+  },
+  inPagePush: {
+    zone: (env.VITE_APP_INPAGE_ZONE as string | undefined) ?? "12006031",
+    src: "https://nap5k.com/tag.min.js",
+  },
+};

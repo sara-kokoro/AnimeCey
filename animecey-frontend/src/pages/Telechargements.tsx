@@ -110,14 +110,6 @@ export default function Telechargements() {
       <div className="pt-20 pb-10 mx-auto max-w-5xl px-4 md:px-6">
         <div className="flex items-center justify-between gap-3">
           <h1 className="font-display font-extrabold text-2xl md:text-3xl">Mes Téléchargements</h1>
-          <span
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold ${
-              online ? "bg-foreground/10 text-muted-foreground" : "bg-primary/15 text-primary"
-            }`}
-          >
-            {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-            {online ? "En ligne" : "Hors ligne"}
-          </span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Tes épisodes sont gardés dans l'application : regarde-les même sans internet.

@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { ExternalLink, Loader2, ShieldCheck, Smartphone } from "lucide-react";
+import { ChevronDown, ExternalLink, Loader2, ShieldCheck, Smartphone } from "lucide-react";
 import { createDonation, fetchDonateConfig, fetchDonationStatus } from "@/api/donate";
+import { CountrySheet } from "./CountrySheet";
+import { PaymentFrame } from "./PaymentFrame";
+import { flag } from "./flags";
 
 const LS_KEY = "magi:donation";
+const UNITS: Record<string, string> = { XOF: "F CFA", XAF: "F CFA", USD: "$", GNF: "GNF", GHS: "GH₵", KES: "KSh" };
+const unitOf = (c?: string) => (c ? UNITS[c] ?? c : "F CFA");
 const fmt = (n: number) => n.toLocaleString("fr-FR").replace(/ | /g, " ");
 
 function load(): { id: string; url?: string } | null {
@@ -124,26 +129,36 @@ function SuccessAnimation() {
 /* ── Composant principal ────────────────────────────────────────────── */
 
 export function MobileMoneyDonation({ className = "" }: { className?: string }) {
-  const { data: cfg, isLoading, isError } = useQuery({ queryKey: ["donate-config"], queryFn: fetchDonateConfig, staleTime: 10 * 60_000 });
+  const { data: cfg, isLoading, isError } = useQuery({ queryKey: ["donate-config-v2"], queryFn: fetchDonateConfig, staleTime: 10 * 60_000 });
 
-  const [amountText, setAmountText] = useState("1000");
+  const [amountText, setAmountText] = useState("");
   const [name, setName] = useState("");
   const [country, setCountry] = useState("");
   const [operator, setOperator] = useState("");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sheet, setSheet] = useState(false);
+  const [frameOpen, setFrameOpen] = useState(false);
   const [current, setCurrent] = useState<{ id: string; url?: string } | null>(() => load());
 
-  const amount = parseInt(amountText.replace(/\D/g, ""), 10) || 0;
   const countryObj = cfg?.countries.find((c) => c.code === country);
+  const cur = countryObj?.currency ?? "FCFA";
+  const unit = unitOf(cur);
+  const isFcfa = cur === "XOF" || cur === "XAF";
+  const fcfaPreview = !isFcfa && countryObj?.rate_fcfa && amount > 0 ? Math.round(amount * countryObj.rate_fcfa) : 0;
+  const amount = parseInt(amountText.replace(/\D/g, ""), 10) || 0;
 
+  // Pays par défaut : le Togo (sinon le premier)
   useEffect(() => {
     if (cfg && !country) setCountry(cfg.countries.find((c) => c.code === "TG")?.code ?? cfg.countries[0]?.code ?? "");
   }, [cfg, country]);
+  // Changement de pays : opérateur et montant repartent des valeurs du pays
   useEffect(() => {
-    if (countryObj && !countryObj.operators.includes(operator)) setOperator(countryObj.operators[0] ?? "");
-  }, [countryObj, operator]);
+    if (!countryObj) return;
+    if (!countryObj.operators.includes(operator)) setOperator(countryObj.operators[0] ?? "");
+    setAmountText(String(countryObj.presets[1] ?? countryObj.presets[0] ?? countryObj.min));
+  }, [countryObj?.code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Suivi du don en cours (toutes les 3 s tant qu'il est en attente)
   const { data: status, isError: statusError } = useQuery({
@@ -157,36 +172,32 @@ export function MobileMoneyDonation({ className = "" }: { className?: string }) 
     if (statusError) {
       save(null);
       setCurrent(null);
+      setFrameOpen(false);
     }
   }, [statusError]);
+  // Paiement terminé (réussi ou non) : on ferme le navigateur intégré, l'écran de résultat prend le relais
+  useEffect(() => {
+    if (status && status.status !== "awaiting_payment") setFrameOpen(false);
+  }, [status]);
 
   const amountError =
-    cfg && amount > 0 && (amount < cfg.min || amount > cfg.max)
-      ? `Le don doit être entre ${fmt(cfg.min)} et ${fmt(cfg.max)} F`
+    countryObj && amount > 0 && (amount < countryObj.min || amount > countryObj.max)
+      ? `Le don doit être entre ${fmt(countryObj.min)} et ${fmt(countryObj.max)} ${unit}`
       : null;
   const phoneDigits = phone.replace(/\D/g, "");
-  const canSubmit = !!cfg && !busy && amount > 0 && !amountError && !!country && !!operator && phoneDigits.length >= 8;
+  const canSubmit = !!countryObj && !busy && amount > 0 && !amountError && !!operator && phoneDigits.length >= 8;
 
   const submit = async () => {
     if (!canSubmit) return;
     setBusy(true);
     setError(null);
-    // La fenêtre de paiement est ouverte tout de suite (sur le clic) pour ne pas être bloquée par le navigateur
-    let win: Window | null = null;
-    try {
-      win = window.open("", "_blank");
-    } catch {
-      win = null;
-    }
     try {
       const res = await createDonation({ amount, country, operator, phone: phoneDigits, donor_name: name.trim() || undefined });
       const next = { id: res.id, url: res.payment_url };
       save(next);
       setCurrent(next);
-      if (win) win.location.href = res.payment_url;
-      else window.open(res.payment_url, "_blank");
+      setFrameOpen(true); // la page de paiement s'ouvre dans Magi-Stream
     } catch (e) {
-      win?.close();
       setError(e instanceof Error ? e.message : "Impossible de lancer le paiement.");
     } finally {
       setBusy(false);
@@ -196,10 +207,12 @@ export function MobileMoneyDonation({ className = "" }: { className?: string }) 
   const reset = () => {
     save(null);
     setCurrent(null);
+    setFrameOpen(false);
     setError(null);
   };
 
   const state = !current ? "form" : status?.status === "paid" ? "paid" : status?.status === "failed" || status?.status === "expired" ? status.status : "waiting";
+  const paidUnit = status?.currency === "XOF" || status?.currency === "XAF" || !status?.currency ? "F" : unitOf(status.currency);
 
   return (
     <section className={`rounded-3xl border border-primary/40 bg-gradient-to-br from-primary/15 via-primary/5 to-transparent p-4 md:p-5 ${className}`}>
@@ -216,15 +229,35 @@ export function MobileMoneyDonation({ className = "" }: { className?: string }) 
               </div>
             </div>
 
-            {isLoading && <p className="mt-4 text-sm text-muted-foreground inline-flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Chargement…</p>}
+            {isLoading && (
+              <div className="mt-6 mb-2 flex flex-col items-center gap-3 text-center">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <p className="text-sm font-bold">Chargement…</p>
+                <p className="text-xs text-muted-foreground">Préparation du formulaire de don.</p>
+              </div>
+            )}
             {isError && <p className="mt-4 text-sm text-destructive">Les dons par Mobile Money sont indisponibles pour le moment. Réessaie plus tard.</p>}
 
-            {cfg && (
+            {cfg && countryObj && (
               <div className="mt-4 space-y-4">
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Montant (F CFA)</label>
+                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Pays</label>
+                  <button
+                    type="button"
+                    onClick={() => setSheet(true)}
+                    className="mt-2 w-full h-12 rounded-xl bg-background border border-border px-3 flex items-center gap-3 text-left"
+                  >
+                    <span className="text-2xl leading-none">{flag(countryObj.code)}</span>
+                    <span className="flex-1 min-w-0 text-sm font-bold truncate">{countryObj.name}</span>
+                    <span className="text-xs text-muted-foreground">{countryObj.dial}</span>
+                    <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Montant ({unit})</label>
                   <div className="mt-2 grid grid-cols-4 gap-2">
-                    {cfg.presets.map((p) => (
+                    {countryObj.presets.map((p) => (
                       <button
                         key={p}
                         type="button"
@@ -239,9 +272,10 @@ export function MobileMoneyDonation({ className = "" }: { className?: string }) 
                     inputMode="numeric"
                     value={amountText ? fmt(amount) : ""}
                     onChange={(e) => setAmountText(e.target.value)}
-                    placeholder={`Autre montant (${fmt(cfg.min)} – ${fmt(cfg.max)})`}
+                    placeholder={`Autre montant (${fmt(countryObj.min)} – ${fmt(countryObj.max)})`}
                     className="mt-2 w-full h-12 rounded-xl bg-background border border-border px-3 text-base font-bold"
                   />
+                  {fcfaPreview > 0 && !amountError && <p className="mt-1 text-xs text-muted-foreground">≈ {fmt(fcfaPreview)} F CFA (taux du jour)</p>}
                   {amountError && <p className="mt-1 text-xs text-destructive">{amountError}</p>}
                 </div>
 
@@ -257,42 +291,34 @@ export function MobileMoneyDonation({ className = "" }: { className?: string }) 
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Pays</label>
-                  <select value={country} onChange={(e) => setCountry(e.target.value)} className="mt-2 w-full h-12 rounded-xl bg-background border border-border px-3 text-sm">
-                    {cfg.countries.map((c) => (
-                      <option key={c.code} value={c.code}>{c.name}</option>
+                  <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Moyen de paiement</label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {countryObj.operators.map((o) => (
+                      <button
+                        key={o}
+                        type="button"
+                        onClick={() => setOperator(o)}
+                        className={`h-10 px-4 rounded-full border text-sm font-bold transition-colors ${operator === o ? "bg-primary text-primary-foreground border-primary" : "bg-surface border-border-subtle hover:border-primary/60"}`}
+                      >
+                        {o}
+                      </button>
                     ))}
-                  </select>
-                </div>
-
-                {countryObj && (
-                  <div>
-                    <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Moyen de paiement</label>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {countryObj.operators.map((o) => (
-                        <button
-                          key={o}
-                          type="button"
-                          onClick={() => setOperator(o)}
-                          className={`h-10 px-4 rounded-full border text-sm font-bold transition-colors ${operator === o ? "bg-primary text-primary-foreground border-primary" : "bg-surface border-border-subtle hover:border-primary/60"}`}
-                        >
-                          {o}
-                        </button>
-                      ))}
-                    </div>
                   </div>
-                )}
+                </div>
 
                 <div>
                   <label className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Ton numéro Mobile Money</label>
-                  <input
-                    type="tel"
-                    inputMode="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Ex. 90 12 34 56"
-                    className="mt-2 w-full h-12 rounded-xl bg-background border border-border px-3 text-base"
-                  />
+                  <div className="mt-2 flex items-center rounded-xl bg-background border border-border focus-within:border-primary">
+                    <span className="pl-3 pr-2 text-sm font-bold text-muted-foreground">{countryObj.dial}</span>
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="90 12 34 56"
+                      className="flex-1 h-12 bg-transparent outline-none pr-3 text-base"
+                    />
+                  </div>
                 </div>
 
                 {error && <p className="text-sm text-destructive">{error}</p>}
@@ -304,11 +330,11 @@ export function MobileMoneyDonation({ className = "" }: { className?: string }) 
                   className="w-full h-12 rounded-full bg-primary text-primary-foreground font-bold inline-flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   {busy ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
-                  {amount > 0 ? `Donner ${fmt(amount)} F` : "Faire un don"}
+                  {amount > 0 ? `Donner ${fmt(amount)} ${unit}` : "Faire un don"}
                 </button>
                 <p className="flex gap-2 text-xs text-muted-foreground">
                   <ShieldCheck className="w-4 h-4 shrink-0 text-primary mt-0.5" />
-                  Le paiement se valide sur une page sécurisée, puis sur ton téléphone. Nous ne gardons pas ton numéro au-delà du don.
+                  Le paiement se valide sur une page sécurisée MoneyFusion, directement ici, puis sur ton téléphone.
                 </p>
               </div>
             )}
@@ -320,13 +346,13 @@ export function MobileMoneyDonation({ className = "" }: { className?: string }) 
             <WaitingAnimation />
             <h2 className="mt-2 font-display font-extrabold text-lg">En attente de ton paiement…</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Termine le paiement sur la page qui s'est ouverte, puis valide sur ton téléphone si on te le demande.
+              Termine le paiement sur la page sécurisée, puis valide sur ton téléphone si on te le demande.
               Cette page se met à jour toute seule.
             </p>
             {current?.url && (
-              <a href={current.url} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex items-center gap-2 h-11 px-5 rounded-full bg-primary text-primary-foreground text-sm font-bold">
+              <button type="button" onClick={() => setFrameOpen(true)} className="mt-4 inline-flex items-center gap-2 h-11 px-5 rounded-full bg-primary text-primary-foreground text-sm font-bold">
                 <ExternalLink className="w-4 h-4" /> Ouvrir la page de paiement
-              </a>
+              </button>
             )}
             <div>
               <button type="button" onClick={reset} className="mt-3 text-xs text-muted-foreground underline">Annuler et recommencer</button>
@@ -339,7 +365,7 @@ export function MobileMoneyDonation({ className = "" }: { className?: string }) 
             <SuccessAnimation />
             <h2 className="mt-1 font-display font-extrabold text-xl">Merci{status?.donor_name ? ` ${status.donor_name}` : ""} ! 💜</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Ton don de <b className="text-foreground">{fmt(status?.amount ?? amount)} F</b> est bien arrivé. Grâce à toi, Magi-Stream reste en ligne et gratuit pour tout le monde.
+              Ton don de <b className="text-foreground">{fmt(status?.amount ?? amount)} {paidUnit}</b> est bien arrivé. Grâce à toi, Magi-Stream reste en ligne et gratuit pour tout le monde.
             </p>
             <button type="button" onClick={reset} className="mt-4 h-11 px-6 rounded-full bg-primary text-primary-foreground text-sm font-bold">
               Faire un autre don
@@ -355,6 +381,9 @@ export function MobileMoneyDonation({ className = "" }: { className?: string }) 
           </motion.div>
         )}
       </AnimatePresence>
+
+      <CountrySheet open={sheet} countries={cfg?.countries ?? []} value={country} onSelect={setCountry} onClose={() => setSheet(false)} />
+      <PaymentFrame url={current?.url ?? null} open={frameOpen && state === "waiting"} onClose={() => setFrameOpen(false)} />
     </section>
   );
 }

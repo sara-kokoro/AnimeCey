@@ -14,11 +14,8 @@ export const SITE = "https://www.magi-stream.online/";
 
 /** Ouvre une page du site, ou prévient si le téléphone n'a pas de connexion. */
 export function goSite(path = "") {
-  if (navigator.onLine) {
-    location.href = SITE + path.replace(/^\//, "");
-  } else {
-    toast.info("Pas de connexion : reconnecte-toi pour ouvrir cette page.");
-  }
+  // On tente toujours : navigator.onLine se trompe sur les forfaits « zero-rated » / certains réseaux.
+  location.href = SITE + path.replace(/^\//, "");
 }
 
 /** Équivalent du <Link> du site. */

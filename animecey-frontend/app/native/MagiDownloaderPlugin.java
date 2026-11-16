@@ -63,6 +63,7 @@ public class MagiDownloaderPlugin extends Plugin {
                 .putExtra("title", call.getString("title", "Épisode"))
                 .putExtra("subtitle", call.getString("subtitle", ""));
         ContextCompat.startForegroundService(ctx, i);
+        askBatteryExemption(ctx);
         call.resolve();
     }
 
@@ -108,5 +109,23 @@ public class MagiDownloaderPlugin extends Plugin {
         JSObject res = new JSObject();
         res.put("items", items);
         call.resolve(res);
+    }
+
+    /** Une seule fois : demande à Android de ne pas endormir/tuer l'app pendant les téléchargements. */
+    private void askBatteryExemption(Context ctx) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT < 23) return;
+            android.content.SharedPreferences sp = ctx.getSharedPreferences("magi_prefs", Context.MODE_PRIVATE);
+            if (sp.getBoolean("battery_asked", false)) return;
+            android.os.PowerManager pm = (android.os.PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+            if (pm == null || pm.isIgnoringBatteryOptimizations(ctx.getPackageName())) return;
+            sp.edit().putBoolean("battery_asked", true).apply();
+            Intent bi = new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    android.net.Uri.parse("package:" + ctx.getPackageName()));
+            bi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(bi);
+        } catch (Exception ignored) {
+            // réglage indisponible sur cet appareil
+        }
     }
 }

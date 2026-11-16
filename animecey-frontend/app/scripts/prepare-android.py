@@ -32,6 +32,7 @@ perms = [
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
     "android.permission.WAKE_LOCK",
+    "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
     "android.permission.ACCESS_NETWORK_STATE",
 ]
 add = "".join(f'    <uses-permission android:name="{p}" />\n' for p in perms if p not in xml)
@@ -96,33 +97,23 @@ if gs.exists():
 else:
     print("ATTENTION : app/google-services.json introuvable, notifications Firebase désactivées (la vérification périodique reste active).")
 
-# 3d. Signature de release : clé unique et secrète, lue dans les variables d'environnement
-# (MAGI_KEYSTORE_FILE, MAGI_KEYSTORE_PASSWORD, MAGI_KEY_ALIAS, MAGI_KEY_PASSWORD), fournies par les
-# secrets GitHub. Aucun mot de passe n'est écrit dans le dépôt. Tant que la même clé est utilisée,
-# Android installe chaque nouvelle version par-dessus l'ancienne, sans désinstallation.
-import os
-for var in ("MAGI_KEYSTORE_FILE", "MAGI_KEYSTORE_PASSWORD", "MAGI_KEY_ALIAS", "MAGI_KEY_PASSWORD"):
-    if not os.environ.get(var):
-        sys.exit(f"ERREUR : variable {var} absente (secret GitHub manquant). Voir README, section Signature.")
-if not pathlib.Path(os.environ["MAGI_KEYSTORE_FILE"]).is_file():
-    sys.exit("ERREUR : fichier de clé introuvable (MAGI_KEYSTORE_FILE).")
-
+# 3d. Signature : on indique la clé fixe (app/debug.keystore) directement à Gradle.
+# Sans cela, Gradle peut en fabriquer une nouvelle à chaque construction, et Android refuse alors
+# d'installer l'APK par-dessus l'ancienne version (« package en conflit »).
+ks = root / "debug.keystore"
 g = gradle.read_text(encoding="utf-8")
-if "magiSigning" not in g:
+if ks.exists() and "magiSigning" not in g:
     block = (
-        "android {\n    // magiSigning\n    signingConfigs {\n        release {\n"
-        '            storeFile file(System.getenv("MAGI_KEYSTORE_FILE"))\n'
-        '            storePassword System.getenv("MAGI_KEYSTORE_PASSWORD")\n'
-        '            keyAlias System.getenv("MAGI_KEY_ALIAS")\n'
-        '            keyPassword System.getenv("MAGI_KEY_PASSWORD")\n'
+        "android {\n    // magiSigning\n    signingConfigs {\n        debug {\n"
+        f'            storeFile file("{ks.as_posix()}")\n'
+        '            storePassword "android"\n            keyAlias "androiddebugkey"\n            keyPassword "android"\n'
         "        }\n    }\n"
     )
-    g, n1 = re.subn(r"android\s*\{\s*\n", lambda m: block, g, count=1)
-    g, n2 = re.subn(r"(buildTypes\s*\{\s*release\s*\{\s*\n)", lambda m: m.group(1) + "            signingConfig signingConfigs.release\n", g, count=1)
-    if not (n1 and n2):
-        sys.exit("ERREUR : impossible d'ajouter la signature release dans build.gradle (format inattendu).")
+    g = re.sub(r"android\s*\{\s*\n", lambda m: block, g, count=1)
     gradle.write_text(g, encoding="utf-8")
-    print("Signature : clé de release appliquée.")
+    print("Signature : clé fixe appliquée.")
+else:
+    print("ATTENTION : debug.keystore introuvable, signature par défaut.")
 
 # 4. Version
 g = gradle.read_text(encoding="utf-8")

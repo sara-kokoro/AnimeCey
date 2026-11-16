@@ -2,8 +2,21 @@ import { HeartHandshake } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { Seo } from "@/components/Seo";
-import { DonateCard } from "@/components/donate/DonateCard";
+import { Suspense, lazy } from "react";
+import { Loader2 } from "lucide-react";
 import { MobileMoneyDonation } from "@/components/donate/MobileMoneyDonation";
+
+const DonateCard = lazy(() => import("@/components/donate/DonateCard").then((m) => ({ default: m.DonateCard })));
+
+function CryptoLoading() {
+  return (
+    <div className="mt-3 rounded-3xl border border-border bg-surface p-6 flex flex-col items-center gap-2 text-center">
+      <Loader2 className="w-7 h-7 animate-spin text-primary" />
+      <p className="text-sm font-bold">Chargement…</p>
+      <p className="text-xs text-muted-foreground">Préparation des adresses crypto.</p>
+    </div>
+  );
+}
 
 export default function Don() {
   return (
@@ -26,7 +39,9 @@ export default function Don() {
         <MobileMoneyDonation className="mt-6" />
 
         <h2 className="mt-8 font-display font-bold text-lg">Ou en cryptomonnaie</h2>
-        <DonateCard className="mt-3" />
+        <Suspense fallback={<CryptoLoading />}>
+          <DonateCard className="mt-3" />
+        </Suspense>
       </main>
       <Footer />
     </div>
